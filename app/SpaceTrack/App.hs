@@ -10,6 +10,7 @@ import SpaceTrack.Config (Config (..), parseConfig)
 import SpaceTrack.Database
   ( completeRun
   , deactivateMissing
+  , hasSuccessfulRunToday
   , insertRun
   , runMigrations
   , upsertGpRecord
@@ -26,11 +27,22 @@ instance Exception IngestError
 main :: IO ()
 main = do
   config <- parseConfig
-  records <- fetchCurrentLeoGp config
-  validateCatalog records
-  if cfgDryRun config
-    then putStrLn ("validated " <> show (length records) <> " Space-Track GP records")
-    else persistCatalog config records
+  shouldSkip <- shouldSkipIngest config
+  if shouldSkip
+    then putStrLn "skipping ingest; successful run already recorded today"
+    else do
+      records <- fetchCurrentLeoGp config
+      validateCatalog records
+      if cfgDryRun config
+        then putStrLn ("validated " <> show (length records) <> " Space-Track GP records")
+        else persistCatalog config records
+
+shouldSkipIngest :: Config -> IO Bool
+shouldSkipIngest config
+  | cfgDryRun config = pure False
+  | not (cfgSkipIfSuccessfulToday config) = pure False
+  | otherwise =
+      withDatabase config hasSuccessfulRunToday
 
 validateCatalog :: [GpRecord] -> IO ()
 validateCatalog [] = throwIO EmptyCatalog

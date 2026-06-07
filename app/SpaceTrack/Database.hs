@@ -4,6 +4,7 @@
 module SpaceTrack.Database
   ( completeRun
   , deactivateMissing
+  , hasSuccessfulRunToday
   , insertRun
   , runMigrations
   , upsertGpRecord
@@ -25,6 +26,7 @@ import Database.PostgreSQL.Simple
   , execute
   , execute_
   , query
+  , query_
   )
 import Database.PostgreSQL.Simple.ToField (Action, ToField (toField))
 import Database.PostgreSQL.Simple.ToRow (ToRow (toRow))
@@ -56,6 +58,33 @@ runMigrations conn = do
   _ <- execute_ conn createIngestionRuns
   _ <- execute_ conn createCurrentTable
   traverse_ (execute_ conn) indexes
+
+hasSuccessfulRunToday :: Connection -> IO Bool
+hasSuccessfulRunToday conn = do
+  tableRows <-
+    ( query_
+        conn
+        "SELECT to_regclass('public.ingestion_runs')::text" ::
+        IO [Only (Maybe String)]
+    )
+  case tableRows of
+    [Only Nothing] -> pure False
+    [Only (Just _)] -> successfulRunExists
+    _ -> fail "failed to check ingestion_runs table presence"
+ where
+  successfulRunExists = do
+    rows <-
+      query_
+        conn
+        "SELECT EXISTS (\
+        \ SELECT 1 FROM ingestion_runs\
+        \ WHERE status = 'success'\
+        \ AND finished_at >= current_date\
+        \ AND finished_at < current_date + interval '1 day'\
+        \)"
+    case rows of
+      [Only exists] -> pure exists
+      _ -> fail "failed to check for today's successful ingestion run"
 
 insertRun :: Connection -> String -> IO Int64
 insertRun conn queryUrl = do

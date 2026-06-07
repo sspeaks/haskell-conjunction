@@ -45,6 +45,7 @@ data Config = Config
   , cfgThrottlePerHour :: !Int
   , cfgThrottleMinSpacingSeconds :: !Double
   , cfgDryRun :: !Bool
+  , cfgSkipIfSuccessfulToday :: !Bool
   }
   deriving (Eq, Show)
 
@@ -167,6 +168,11 @@ configParser = do
     switch
       ( long "dry-run"
           <> help "Fetch and validate Space-Track data without mutating the database."
+      )
+  cfgSkipIfSuccessfulToday <-
+    switch
+      ( long "skip-if-success-today"
+          <> help "Exit without fetching when a successful ingestion run already finished today."
       )
   pure Config {..}
 

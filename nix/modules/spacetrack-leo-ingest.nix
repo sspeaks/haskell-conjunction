@@ -3,7 +3,7 @@
 
 let
   cfg = config.services.spacetrack-leo-ingest;
-  inherit (lib) mkEnableOption mkIf mkOption optional optionals types;
+  inherit (lib) mkEnableOption mkIf mkOption optional optionalAttrs optionals types;
 
   packageForSystem =
     self.packages.${pkgs.stdenv.hostPlatform.system}.spacetrack-leo-ingest
@@ -44,6 +44,27 @@ let
     "--query-url"
     cfg.queryUrl
   ] ++ databaseArgs ++ cfg.extraArgs;
+
+  catchUpCommandArgs = commandArgs ++ [ "--skip-if-success-today" ];
+
+  serviceConfig = {
+    Type = "oneshot";
+    User = cfg.user;
+    Group = cfg.group;
+    StateDirectory = "spacetrack-leo-ingest";
+    WorkingDirectory = cfg.dataDir;
+    NoNewPrivileges = true;
+    PrivateTmp = true;
+    ProtectHome = true;
+    ProtectSystem = "strict";
+    ReadWritePaths = [ cfg.dataDir ];
+  };
+
+  serviceOrdering = {
+    after = [ "network-online.target" ] ++ optional cfg.database.local.enable "postgresql.service";
+    wants = [ "network-online.target" ];
+    requires = optional cfg.database.local.enable "postgresql.service";
+  };
 in
 {
   options.services.spacetrack-leo-ingest = {
@@ -143,6 +164,30 @@ in
       description = "RandomizedDelaySec for the systemd timer.";
     };
 
+    catchUp.enable = mkOption {
+      type = types.bool;
+      default = true;
+      description = "Run a guarded catch-up timer after boot and periodically while the machine is on.";
+    };
+
+    catchUp.onBootSec = mkOption {
+      type = types.str;
+      default = "5min";
+      description = "Delay after boot before running the guarded catch-up service.";
+    };
+
+    catchUp.onCalendar = mkOption {
+      type = types.nullOr types.str;
+      default = "hourly";
+      description = "Optional calendar schedule for guarded catch-up checks while the machine is on.";
+    };
+
+    catchUp.randomizedDelaySec = mkOption {
+      type = types.str;
+      default = "5min";
+      description = "RandomizedDelaySec for the guarded catch-up timer.";
+    };
+
     requestTimeoutSec = mkOption {
       type = types.ints.positive;
       default = 180;
@@ -220,24 +265,31 @@ in
       {
         description = "Fetch latest Space-Track LEO-crossing GP records";
         wantedBy = [ ];
-        after = [ "network-online.target" ] ++ optional cfg.database.local.enable "postgresql.service";
-        wants = [ "network-online.target" ];
-        requires = optional cfg.database.local.enable "postgresql.service";
+        inherit (serviceOrdering) after wants requires;
         script = "exec ${cfg.package}/bin/spacetrack-leo-ingest ${lib.escapeShellArgs commandArgs}";
-
-        serviceConfig = {
-          Type = "oneshot";
-          User = cfg.user;
-          Group = cfg.group;
-          StateDirectory = "spacetrack-leo-ingest";
-          WorkingDirectory = cfg.dataDir;
-          NoNewPrivileges = true;
-          PrivateTmp = true;
-          ProtectHome = true;
-          ProtectSystem = "strict";
-          ReadWritePaths = [ cfg.dataDir ];
-        };
+        serviceConfig = serviceConfig;
       };
+
+    systemd.services.spacetrack-leo-ingest-catch-up = mkIf cfg.catchUp.enable {
+      description = "Catch up Space-Track LEO ingest if today has not run";
+      wantedBy = [ ];
+      inherit (serviceOrdering) after wants requires;
+      script = "exec ${cfg.package}/bin/spacetrack-leo-ingest ${lib.escapeShellArgs catchUpCommandArgs}";
+      serviceConfig = serviceConfig;
+    };
+
+    systemd.timers.spacetrack-leo-ingest-catch-up = mkIf cfg.catchUp.enable {
+      description = "Catch up Space-Track LEO ingest after boot";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        Unit = "spacetrack-leo-ingest-catch-up.service";
+        OnBootSec = cfg.catchUp.onBootSec;
+        RandomizedDelaySec = cfg.catchUp.randomizedDelaySec;
+        Persistent = true;
+      } // optionalAttrs (cfg.catchUp.onCalendar != null) {
+        OnCalendar = cfg.catchUp.onCalendar;
+      };
+    };
 
     systemd.timers.spacetrack-leo-ingest = {
       description = "Run Space-Track LEO ingest";

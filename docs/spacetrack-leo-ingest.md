@@ -55,6 +55,12 @@ The Space-Track GP query is built into the executable. Set
 `services.spacetrack-leo-ingest.queryUrl` only when you need to override the
 default LEO-crossing query.
 
+The regular timer uses `Persistent = true`, so missed calendar runs are caught
+when the machine is next on. The module also enables a guarded catch-up timer by
+default: `spacetrack-leo-ingest-catch-up.timer` runs after boot and hourly while
+the machine is on, but the executable exits before contacting Space-Track if a
+successful run already finished during the current local day.
+
 ## External database override
 
 Use an external database only when local provisioning is disabled:
@@ -90,3 +96,5 @@ spacetrack-leo-ingest \
 ```
 
 Use `--dry-run` to fetch and validate data without mutating the database.
+Use `--skip-if-success-today` for catch-up jobs that should avoid a second
+Space-Track request after the day's ingest has already succeeded.
