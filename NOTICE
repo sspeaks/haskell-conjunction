@@ -1,0 +1,14 @@
+This package contains Haskell bindings authored for the haskell-conjunction
+project and distributed under the BSD-3-Clause license in LICENSE.
+
+The vendored SGP4 implementation under sgp4/ is David A. Vallado's reference
+SGP4 companion code for Fundamentals of Astrodynamics and Applications. The
+source headers identify the code as companion code by David Vallado and cite
+the 2006 AIAA paper by Vallado, Crawford, Hujsak, and Kelso, "Revisiting
+Spacetrack Report #3."
+
+The SGP4 code is included as third-party source for interoperability. Public
+domain provenance is based on Vallado's stated intent in correspondence
+preserved by the U.S. Naval Research Laboratory Tracker Component Library.
+The BSD-3-Clause license for this Haskell package should not be read as
+relicensing the vendored SGP4 source.

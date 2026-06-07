@@ -1,0 +1,119 @@
+cabal-version:      3.0
+name:               haskell-conjunction
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Seth Speaks
+maintainer:         sspeaks610@gmail.com
+-- copyright:
+build-type:         Simple
+extra-doc-files:
+    CHANGELOG.md
+    docs/space-acronyms.md
+    docs/spacetrack-leo-ingest.md
+    NOTICE
+extra-source-files:
+    bench/direct_sgp4_bench.cpp
+    bench/run-benchmarks.sh
+    bench/workload.tsv
+    cbits/sgp4_capi.h
+    cbits/sgp4_capi.cpp
+    sgp4/cpp/SGP4/SGP4/SGP4.h
+    sgp4/cpp/SGP4/SGP4/SGP4.cpp
+
+common warnings
+    ghc-options: -Wall
+
+library
+    import:           warnings
+    exposed-modules:
+        SGP4
+        SGP4.Bindings
+        SGP4.Coordinate
+        SGP4.Frames
+        SGP4.Propagate
+        SGP4.TLE
+        SGP4.Time
+        SGP4.Types
+    build-depends:
+        base ^>=4.20.2.0,
+        linear >=1.22 && <1.24,
+        time >=1.12 && <1.15
+    hs-source-dirs:   src
+    default-language: GHC2024
+
+    cxx-sources:
+        cbits/sgp4_capi.cpp
+        sgp4/cpp/SGP4/SGP4/SGP4.cpp
+    cxx-options:      -std=c++14
+    include-dirs:
+        cbits
+        sgp4/cpp/SGP4/SGP4
+    install-includes: sgp4_capi.h
+
+    if os(linux)
+        extra-libraries: stdc++
+    if os(osx)
+        extra-libraries: c++
+    if os(windows)
+        extra-libraries: stdc++
+
+executable spacetrack-leo-ingest
+    import:           warnings
+    main-is:          Main.hs
+    other-modules:
+        SpaceTrack.App
+        SpaceTrack.Client
+        SpaceTrack.Config
+        SpaceTrack.Database
+        SpaceTrack.Json
+        SpaceTrack.Throttle
+        SpaceTrack.Types
+    build-depends:
+        aeson >=2.1 && <2.3,
+        base ^>=4.20.2.0,
+        bytestring >=0.11 && <0.13,
+        haskell-conjunction,
+        http-client >=0.7 && <0.8,
+        http-client-tls >=0.3 && <0.4,
+        http-types >=0.12 && <0.13,
+        optparse-applicative >=0.18 && <0.20,
+        postgresql-simple >=0.6 && <0.8,
+        scientific >=0.3 && <0.4,
+        text >=2.0 && <2.2,
+        time >=1.12 && <1.15
+    hs-source-dirs:   app
+    default-language: GHC2024
+
+test-suite sgp4-tests
+    import:           warnings
+    type:             exitcode-stdio-1.0
+    main-is:          TestSGP4.hs
+    build-depends:
+        aeson >=2.1 && <2.3,
+        base ^>=4.20.2.0,
+        bytestring >=0.11 && <0.13,
+        haskell-conjunction,
+        linear >=1.22 && <1.24,
+        scientific >=0.3 && <0.4,
+        text >=2.0 && <2.2,
+        time >=1.12 && <1.15
+    hs-source-dirs:
+        test
+        app
+    other-modules:
+        SpaceTrack.Json
+        SpaceTrack.Types
+    default-language: GHC2024
+
+benchmark sgp4-hs-bench
+    import:           warnings
+    type:             exitcode-stdio-1.0
+    main-is:          Bench.hs
+    build-depends:
+        base ^>=4.20.2.0,
+        haskell-conjunction
+    hs-source-dirs:   bench
+    default-language: GHC2024

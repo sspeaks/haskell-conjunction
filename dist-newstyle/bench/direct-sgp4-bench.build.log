@@ -1,0 +1,82 @@
+sgp4/cpp/SGP4/SGP4/SGP4.cpp: In function ‘void SGP4Funcs::twoline2rv(char*, char*, char, char, char, gravconsttype, double&, double&, double&, elsetrec&)’:
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2235:41: warning: format ‘%s’ expects argument of type ‘char*’, but argument 4 has type ‘char (*)[6]’ [-Wformat=]
+ 2235 |                 sscanf(longstr1, "%2d %5s %1c %10s %2d %12lf %11lf %7lf %2d %7lf %2d %2d %6ld ",
+      |                                       ~~^
+      |                                         |
+      |                                         char*
+ 2236 |                         &cardnumb, &satrec.satnum, &satrec.classification, &satrec.intldesg, &satrec.epochyr,
+      |                                    ~~~~~~~~~~~~~~
+      |                                    |
+      |                                    char (*)[6]
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2235:50: warning: format ‘%s’ expects argument of type ‘char*’, but argument 6 has type ‘char (*)[11]’ [-Wformat=]
+ 2235 |                 sscanf(longstr1, "%2d %5s %1c %10s %2d %12lf %11lf %7lf %2d %7lf %2d %2d %6ld ",
+      |                                               ~~~^
+      |                                                  |
+      |                                                  char*
+ 2236 |                         &cardnumb, &satrec.satnum, &satrec.classification, &satrec.intldesg, &satrec.epochyr,
+      |                                                                            ~~~~~~~~~~~~~~~~
+      |                                                                            |
+      |                                                                            char (*)[11]
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2250:57: warning: format ‘%s’ expects argument of type ‘char*’, but argument 4 has type ‘char (*)[6]’ [-Wformat=]
+ 2250 |                                 sscanf(longstr2, "%2d %5s %9lf %9lf %8lf %9lf %9lf %10lf %6ld %lf %lf %lf \n",
+      |                                                       ~~^
+      |                                                         |
+      |                                                         char*
+ 2251 |                                         &cardnumb, &satrec.satnum, &satrec.inclo,
+      |                                                    ~~~~~~~~~~~~~~
+      |                                                    |
+      |                                                    char (*)[6]
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2264:57: warning: format ‘%s’ expects argument of type ‘char*’, but argument 4 has type ‘char (*)[6]’ [-Wformat=]
+ 2264 |                                 sscanf(longstr2, "%2d %5s %9lf %9lf %8lf %9lf %9lf %11lf %6ld %lf %lf %lf \n",
+      |                                                       ~~^
+      |                                                         |
+      |                                                         char*
+ 2265 |                                         &cardnumb, &satrec.satnum, &satrec.inclo,
+      |                                                    ~~~~~~~~~~~~~~
+      |                                                    |
+      |                                                    char (*)[6]
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2281:57: warning: format ‘%s’ expects argument of type ‘char*’, but argument 4 has type ‘char (*)[6]’ [-Wformat=]
+ 2281 |                                 sscanf(longstr2, "%2d %5s %9lf %9lf %8lf %9lf %9lf %10lf %6ld \n",
+      |                                                       ~~^
+      |                                                         |
+      |                                                         char*
+ 2282 |                                         &cardnumb, &satrec.satnum, &satrec.inclo,
+      |                                                    ~~~~~~~~~~~~~~
+      |                                                    |
+      |                                                    char (*)[6]
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2295:57: warning: format ‘%s’ expects argument of type ‘char*’, but argument 4 has type ‘char (*)[6]’ [-Wformat=]
+ 2295 |                                 sscanf(longstr2, "%2d %5s %9lf %9lf %8lf %9lf %9lf %11lf %6ld \n",
+      |                                                       ~~^
+      |                                                         |
+      |                                                         char*
+ 2296 |                                         &cardnumb, &satrec.satnum, &satrec.inclo,
+      |                                                    ~~~~~~~~~~~~~~
+      |                                                    |
+      |                                                    char (*)[6]
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2351:38: warning: ignoring return value of ‘int scanf(const char*, ...)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+ 2351 |                                 scanf("%i %i %i %i %i %lf", &startyear, &startmon, &startday, &starthr, &startmin, &startsec);
+      |                                 ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2360:38: warning: ignoring return value of ‘int scanf(const char*, ...)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+ 2360 |                                 scanf("%i %i %i %i %i %lf", &stopyear, &stopmon, &stopday, &stophr, &stopmin, &stopsec);
+      |                                 ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2372:38: warning: ignoring return value of ‘int scanf(const char*, ...)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+ 2372 |                                 scanf("%lf", &deltamin);
+      |                                 ~~~~~^~~~~~~~~~~~~~~~~~
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2382:38: warning: ignoring return value of ‘int scanf(const char*, ...)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+ 2382 |                                 scanf("%i %lf", &startyear, &startdayofyr);
+      |                                 ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2388:38: warning: ignoring return value of ‘int scanf(const char*, ...)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+ 2388 |                                 scanf("%i %lf", &stopyear, &stopdayofyr);
+      |                                 ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2404:38: warning: ignoring return value of ‘int scanf(const char*, ...)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+ 2404 |                                 scanf("%lf", &deltamin);
+      |                                 ~~~~~^~~~~~~~~~~~~~~~~~
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2419:38: warning: ignoring return value of ‘int scanf(const char*, ...)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+ 2419 |                                 scanf("%lf", &startmfe);
+      |                                 ~~~~~^~~~~~~~~~~~~~~~~~
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2421:38: warning: ignoring return value of ‘int scanf(const char*, ...)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+ 2421 |                                 scanf("%lf", &stopmfe);
+      |                                 ~~~~~^~~~~~~~~~~~~~~~~
+sgp4/cpp/SGP4/SGP4/SGP4.cpp:2423:38: warning: ignoring return value of ‘int scanf(const char*, ...)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+ 2423 |                                 scanf("%lf", &deltamin);
+      |                                 ~~~~~^~~~~~~~~~~~~~~~~~
