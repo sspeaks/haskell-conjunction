@@ -45,7 +45,7 @@ let
     cfg.queryUrl
   ] ++ databaseArgs ++ cfg.extraArgs;
 
-  catchUpCommandArgs = commandArgs ++ [ "--skip-if-success-today" ];
+  guardedCommandArgs = commandArgs ++ [ "--skip-if-success-today" ];
 
   serviceConfig = {
     Type = "oneshot";
@@ -150,18 +150,6 @@ in
       default = null;
       defaultText = "null";
       description = "Optional Space-Track GP query URL override. When unset, the executable uses its built-in LEO-crossing query.";
-    };
-
-    schedule = mkOption {
-      type = types.str;
-      default = "daily";
-      description = "systemd OnCalendar expression for the ingest timer.";
-    };
-
-    randomizedDelaySec = mkOption {
-      type = types.str;
-      default = "30min";
-      description = "RandomizedDelaySec for the systemd timer.";
     };
 
     catchUp.enable = mkOption {
@@ -270,11 +258,11 @@ in
         serviceConfig = serviceConfig;
       };
 
-    systemd.services.spacetrack-leo-ingest-catch-up = mkIf cfg.catchUp.enable {
-      description = "Catch up Space-Track LEO ingest if today has not run";
+    systemd.services.spacetrack-leo-ingest-if-needed = {
+      description = "Fetch latest Space-Track LEO-crossing GP records if today has not run";
       wantedBy = [ ];
       inherit (serviceOrdering) after wants requires;
-      script = "exec ${cfg.package}/bin/spacetrack-leo-ingest ${lib.escapeShellArgs catchUpCommandArgs}";
+      script = "exec ${cfg.package}/bin/spacetrack-leo-ingest ${lib.escapeShellArgs guardedCommandArgs}";
       serviceConfig = serviceConfig;
     };
 
@@ -282,22 +270,12 @@ in
       description = "Catch up Space-Track LEO ingest after boot";
       wantedBy = [ "timers.target" ];
       timerConfig = {
-        Unit = "spacetrack-leo-ingest-catch-up.service";
+        Unit = "spacetrack-leo-ingest-if-needed.service";
         OnBootSec = cfg.catchUp.onBootSec;
         RandomizedDelaySec = cfg.catchUp.randomizedDelaySec;
         Persistent = true;
       } // optionalAttrs (cfg.catchUp.onCalendar != null) {
         OnCalendar = cfg.catchUp.onCalendar;
-      };
-    };
-
-    systemd.timers.spacetrack-leo-ingest = {
-      description = "Run Space-Track LEO ingest";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = cfg.schedule;
-        RandomizedDelaySec = cfg.randomizedDelaySec;
-        Persistent = true;
       };
     };
   };
