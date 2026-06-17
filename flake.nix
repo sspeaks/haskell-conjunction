@@ -39,6 +39,7 @@
           packages = {
             default = package;
             spacetrack-leo-ingest = package;
+            conjunction-screen = package;
             postgregui = postgresGui;
             postgres-gui = postgresGui;
           };
@@ -50,6 +51,10 @@
             spacetrack-leo-ingest = {
               type = "app";
               program = "${package}/bin/spacetrack-leo-ingest";
+            };
+            conjunction-screen = {
+              type = "app";
+              program = "${package}/bin/conjunction-screen";
             };
             postgregui = {
               type = "app";

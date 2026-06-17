@@ -11,6 +11,7 @@ maintainer:         sspeaks610@gmail.com
 build-type:         Simple
 extra-doc-files:
     CHANGELOG.md
+    docs/conjunction-screening.md
     docs/space-acronyms.md
     docs/spacetrack-leo-ingest.md
     NOTICE
@@ -29,6 +30,13 @@ common warnings
 library
     import:           warnings
     exposed-modules:
+        Conjunction.Catalog
+        Conjunction.CMCombo
+        Conjunction.Grid
+        Conjunction.Parallel
+        Conjunction.Run
+        Conjunction.Screen
+        Conjunction.Types
         SGP4
         SGP4.Bindings
         SGP4.Coordinate
@@ -38,8 +46,13 @@ library
         SGP4.Time
         SGP4.Types
     build-depends:
+        array >=0.5 && <0.6,
+        async >=2.2 && <2.3,
         base ^>=4.20.2.0,
+        containers >=0.6 && <0.8,
+        deepseq >=1.5 && <1.6,
         linear >=1.22 && <1.24,
+        parallel >=3.2 && <3.3,
         time >=1.12 && <1.15
     hs-source-dirs:   src
     default-language: GHC2024
@@ -87,6 +100,25 @@ executable spacetrack-leo-ingest
     hs-source-dirs:   app
     default-language: GHC2024
 
+executable conjunction-screen
+    import:           warnings
+    main-is:          Main.hs
+    other-modules:
+        ConjunctionScreen.App
+        ConjunctionScreen.Config
+        ConjunctionScreen.Database
+    build-depends:
+        base ^>=4.20.2.0,
+        bytestring >=0.11 && <0.13,
+        haskell-conjunction,
+        optparse-applicative >=0.18 && <0.20,
+        postgresql-simple >=0.6 && <0.8,
+        text >=2.0 && <2.2,
+        time >=1.12 && <1.15
+    hs-source-dirs:   conjunction
+    ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
+    default-language: GHC2024
+
 test-suite sgp4-tests
     import:           warnings
     type:             exitcode-stdio-1.0
@@ -106,6 +138,18 @@ test-suite sgp4-tests
     other-modules:
         SpaceTrack.Json
         SpaceTrack.Types
+    default-language: GHC2024
+
+test-suite conjunction-tests
+    import:           warnings
+    type:             exitcode-stdio-1.0
+    main-is:          TestConjunction.hs
+    build-depends:
+        base ^>=4.20.2.0,
+        haskell-conjunction,
+        time >=1.12 && <1.15
+    hs-source-dirs:   test
+    ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
     default-language: GHC2024
 
 benchmark sgp4-hs-bench

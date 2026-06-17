@@ -47,6 +47,10 @@ let
 
   guardedCommandArgs = commandArgs ++ [ "--skip-if-success-today" ];
 
+  conjunctionArgs = [ "--mode" cfg.conjunction.mode ] ++ databaseArgs ++ cfg.conjunction.extraArgs;
+
+  guardedConjunctionArgs = conjunctionArgs ++ [ "--skip-if-computed-today" ];
+
   serviceConfig = {
     Type = "oneshot";
     User = cfg.user;
@@ -211,6 +215,24 @@ in
       default = [ ];
       description = "Additional command-line arguments passed to spacetrack-leo-ingest.";
     };
+
+    conjunction.enable = mkOption {
+      type = types.bool;
+      default = true;
+      description = "Run conjunction screening after each successful ingest.";
+    };
+
+    conjunction.mode = mkOption {
+      type = types.enum [ "optimized" "raw" "validate" ];
+      default = "optimized";
+      description = "Screening algorithm. The optimized spatial-hash screen is the production path; raw is the all-pairs CM-COMBO oracle; validate compares the two.";
+    };
+
+    conjunction.extraArgs = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Additional command-line arguments passed to conjunction-screen (for example screening window or threshold overrides).";
+    };
   };
 
   config = mkIf cfg.enable {
@@ -261,8 +283,29 @@ in
     systemd.services.spacetrack-leo-ingest-if-needed = {
       description = "Fetch latest Space-Track LEO-crossing GP records if today has not run";
       wantedBy = [ ];
-      inherit (serviceOrdering) after wants requires;
+      inherit (serviceOrdering) after requires;
+      wants =
+        serviceOrdering.wants
+        ++ optional cfg.conjunction.enable "spacetrack-conjunction-screen-if-needed.service";
       script = "exec ${cfg.package}/bin/spacetrack-leo-ingest ${lib.escapeShellArgs guardedCommandArgs}";
+      serviceConfig = serviceConfig;
+    };
+
+    systemd.services.spacetrack-conjunction-screen = mkIf cfg.conjunction.enable {
+      description = "Screen the active LEO catalog for close approaches";
+      wantedBy = [ ];
+      inherit (serviceOrdering) wants requires;
+      after = serviceOrdering.after ++ [ "spacetrack-leo-ingest.service" ];
+      script = "exec ${cfg.package}/bin/conjunction-screen ${lib.escapeShellArgs conjunctionArgs}";
+      serviceConfig = serviceConfig;
+    };
+
+    systemd.services.spacetrack-conjunction-screen-if-needed = mkIf cfg.conjunction.enable {
+      description = "Screen the active LEO catalog for close approaches if today has not run";
+      wantedBy = [ ];
+      inherit (serviceOrdering) wants requires;
+      after = serviceOrdering.after ++ [ "spacetrack-leo-ingest-if-needed.service" ];
+      script = "exec ${cfg.package}/bin/conjunction-screen ${lib.escapeShellArgs guardedConjunctionArgs}";
       serviceConfig = serviceConfig;
     };
 
