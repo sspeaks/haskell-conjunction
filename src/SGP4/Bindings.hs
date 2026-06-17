@@ -50,7 +50,7 @@ foreign import ccall unsafe "sgp4_capi.h sgp4c_propagate_state"
     Ptr CDouble ->
     IO CInt
 
-foreign import ccall unsafe "sgp4_capi.h sgp4c_propagate_many"
+foreign import ccall safe "sgp4_capi.h sgp4c_propagate_many"
   c_sgp4c_propagate_many ::
     Ptr Satrec ->
     Ptr CDouble ->

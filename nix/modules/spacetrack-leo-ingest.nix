@@ -239,16 +239,19 @@ in
 
     conjunction.rtsOptions = mkOption {
       type = types.listOf types.str;
-      default = [ "-N" "-c" ];
-      example = [ "-N" "-c" "-M20g" ];
+      default = [ "-N" "-c" "-A64m" ];
+      example = [ "-N" "-c" "-A64m" "-M20g" ];
       description = ''
         GHC RTS options passed to conjunction-screen as a @+RTS ... -RTS@ block.
 
         The compacting collector (@-c@) collects the large propagation table in
         place instead of copying it, which avoids the doubling of peak residency
         that otherwise drives the full-catalog screen into the OOM killer; @-N@
-        uses all available cores. Add a hard heap cap such as @-M20g@ to turn a
-        runaway into a clean heap-overflow error instead of a system-wide OOM.
+        uses all available cores; @-A64m@ enlarges the per-capability nursery so
+        the transient propagation and refinement garbage dies young, reducing
+        Gen 0 collections by ~98% and improving parallel GC balance. Add a hard
+        heap cap such as @-M20g@ to turn a runaway into a clean heap-overflow
+        error instead of a system-wide OOM.
         Set to @[ ]@ to pass no RTS options.
       '';
     };

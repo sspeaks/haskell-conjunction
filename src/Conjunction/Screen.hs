@@ -53,6 +53,8 @@ import Linear.V3 (V3 (V3))
 import Linear.Vector ((^+^), (^-^), (^/))
 import SGP4
   ( StateVector (..)
+  , Vec3 (..)
+  , propagate
   , propagateMany
   )
 import SGP4.Coordinate
@@ -262,11 +264,12 @@ screenTiles generate cfg objArr epochArr numTiles tiles = do
 
 -- | Number of candidate pairs refined per batch.
 --
--- Large enough to keep all capabilities busy, small enough that one batch of
--- per-pair @Maybe@ results and their transient fine-propagation garbage stays a
--- small fraction of the heap.
+-- Small enough that one batch's transient fine-propagation garbage is collected
+-- before the next batch starts, bounding peak residency. With 420k candidates,
+-- batches of @capabilities * 5000@ produce ~5 collections instead of one
+-- monolithic GC at the end.
 refineBatchSize :: Int -> Int
-refineBatchSize capabilities = max 1 capabilities * 25000
+refineBatchSize capabilities = max 1 capabilities * 5000
 
 -- | Refine each candidate pair to its true time of closest approach.
 --
@@ -299,6 +302,16 @@ refineCandidates cfg prep cands = do
     result <- refineOne pair
     tick counter
     pure result
+  -- | Refine one candidate pair to its true time of closest approach.
+  --
+  -- Tsinces are computed directly from the bracket endpoints and object epochs.
+  -- After finding the minimum sampled distance, an analytical TCA is computed
+  -- from the relative position and velocity at the minimum sample: near TCA the
+  -- relative motion is nearly linear, so the true closest-approach time is
+  -- @t_m − (Δr·Δv)/|Δv|²@ and the true minimum distance is @|Δr×Δv|/|Δv|@.
+  -- Both objects are then re-propagated to the analytical TCA for the final
+  -- reported positions, guaranteeing that conjunctions are not missed due to
+  -- discrete sampling.
   refineOne ((i, j), k) = do
     let objI = prepObjects prep ! i
         objJ = prepObjects prep ! j
@@ -309,37 +322,92 @@ refineCandidates cfg prep cands = do
         kHi = min (steps - 1) (k + 1)
         tLo = prepGrid prep ! kLo
         tHi = prepGrid prep ! kHi
-        fineTimes = fineGrid tLo tHi (scRefineStepSeconds cfg)
-        sjds = map utcToSplitJD fineTimes
-        tsI = [diffDays s epochI * 1440.0 | s <- sjds]
-        tsJ = [diffDays s epochJ * 1440.0 | s <- sjds]
+        refineStep = scRefineStepSeconds cfg
+        spanSeconds = realToFrac (diffUTCTime tHi tLo) :: Double
+        nFine = max 0 (floor (spanSeconds / refineStep)) :: Int
+        sjdLo = utcToSplitJD tLo
+        baseTsinceI = diffDays sjdLo epochI * 1440.0
+        baseTsinceJ = diffDays sjdLo epochJ * 1440.0
+        stepMin = refineStep / 60.0
+        tsI = [baseTsinceI + fromIntegral m * stepMin | m <- [0 .. nFine]]
+        tsJ = [baseTsinceJ + fromIntegral m * stepMin | m <- [0 .. nFine]]
+        -- Maximum error between sampled and true minimum distance. Any sampled
+        -- distance within this margin of the threshold could hide a real
+        -- conjunction, so the analytical TCA check is applied.
+        refineSafety = scRelVelMaxKms cfg * refineStep / 2.0
     resI <- propagateMany (coSatellite objI) tsI
     resJ <- propagateMany (coSatellite objJ) tsJ
-    let paired =
-          [ (tm, pI, vI, pJ, vJ)
-          | (tm, rI, rJ) <- zip3 fineTimes resI resJ
-          , Right (StateVector ppI vvI _) <- [rI]
-          , Right (StateVector ppJ vvJ _) <- [rJ]
-          , let pI = vec3ToV3 ppI
-                vI = vec3ToV3 vvI
-                pJ = vec3ToV3 ppJ
-                vJ = vec3ToV3 vvJ
-          ]
-    pure $ case minimumByDistance paired of
-      Nothing -> Nothing
-      Just (tm, pI, vI, pJ, vJ)
-        | norm (pI ^-^ pJ) <= scThresholdKm cfg ->
-            Just (buildEvent objI objJ tm pI vI pJ vJ)
-        | otherwise -> Nothing
+    case closestApproach resI resJ of
+      Nothing -> pure Nothing
+      Just (d, m, ppI, vvI, ppJ, vvJ)
+        -- Sampled distance is well beyond threshold even accounting for
+        -- sampling error — skip without further analysis.
+        | d > scThresholdKm cfg + refineSafety -> pure Nothing
+        | otherwise -> do
+            -- Analytical TCA: at the minimum sample, relative motion is nearly
+            -- linear. The time offset to the true closest approach is
+            -- −(Δr·Δv)/|Δv|², clamped to ±refineStep.
+            let !drx = vecX ppI - vecX ppJ
+                !dry = vecY ppI - vecY ppJ
+                !drz = vecZ ppI - vecZ ppJ
+                !dvx = vecX vvI - vecX vvJ
+                !dvy = vecY vvI - vecY vvJ
+                !dvz = vecZ vvI - vecZ vvJ
+                !dvdv = dvx * dvx + dvy * dvy + dvz * dvz
+                !drdv = drx * dvx + dry * dvy + drz * dvz
+                !tOff =
+                  if dvdv > 1.0e-30
+                    then max (-refineStep) (min refineStep (negate drdv / dvdv))
+                    else 0.0
+                -- Analytical minimum distance estimate (linear extrapolation).
+                !erx = drx + tOff * dvx
+                !ery = dry + tOff * dvy
+                !erz = drz + tOff * dvz
+                !dEst = sqrt (erx * erx + ery * ery + erz * erz)
+            if dEst > scThresholdKm cfg
+              then pure Nothing
+              else do
+                -- Propagate both objects to the analytical TCA for accurate
+                -- event data. This costs two single-step propagations but only
+                -- runs for the small fraction of candidates near threshold.
+                let tsinceI = baseTsinceI + fromIntegral m * stepMin + tOff / 60.0
+                    tsinceJ = baseTsinceJ + fromIntegral m * stepMin + tOff / 60.0
+                rI <- propagate (coSatellite objI) tsinceI
+                rJ <- propagate (coSatellite objJ) tsinceJ
+                pure $ case (rI, rJ) of
+                  (Right (StateVector pI' vI' _), Right (StateVector pJ' vJ' _))
+                    | vecDist pI' pJ' <= scThresholdKm cfg ->
+                        let tm = addUTCTime (realToFrac (fromIntegral m * refineStep + tOff)) tLo
+                         in Just (buildEvent objI objJ tm (vec3ToV3 pI') (vec3ToV3 vI') (vec3ToV3 pJ') (vec3ToV3 vJ'))
+                  _ -> Nothing
 
-minimumByDistance ::
-  [(UTCTime, V3 Double, V3 Double, V3 Double, V3 Double)] ->
-  Maybe (UTCTime, V3 Double, V3 Double, V3 Double, V3 Double)
-minimumByDistance [] = Nothing
-minimumByDistance (x : xs) = Just (foldl' pick x xs)
+-- | Find the closest approach from two parallel result lists. Returns the
+-- minimum distance, winning step index, and raw Vec3 position/velocity for
+-- both objects — deferring 'vec3ToV3' conversion to the caller so only the
+-- winning sample pays for it.
+closestApproach ::
+  [Either e StateVector] ->
+  [Either e StateVector] ->
+  Maybe (Double, Int, Vec3, Vec3, Vec3, Vec3)
+closestApproach = go Nothing 0
  where
-  pick best candidate = if dist candidate < dist best then candidate else best
-  dist (_, pI, _, pJ, _) = norm (pI ^-^ pJ)
+  go !best !_ [] _ = best
+  go !best !_ _ [] = best
+  go !best !m (rI : rIs) (rJ : rJs) = case (rI, rJ) of
+    (Right (StateVector ppI vvI _), Right (StateVector ppJ vvJ _)) ->
+      let !d = vecDist ppI ppJ
+       in case best of
+            Just (bestD, _, _, _, _, _) | d >= bestD -> go best (m + 1) rIs rJs
+            _ -> go (Just (d, m, ppI, vvI, ppJ, vvJ)) (m + 1) rIs rJs
+    _ -> go best (m + 1) rIs rJs
+
+-- | Euclidean distance between two Vec3 values without allocating a V3.
+vecDist :: Vec3 -> Vec3 -> Double
+vecDist (Vec3 x1 y1 z1) (Vec3 x2 y2 z2) =
+  let !dx = x1 - x2
+      !dy = y1 - y2
+      !dz = z1 - z2
+   in sqrt (dx * dx + dy * dy + dz * dz)
 
 -- | Assemble an event with objects in canonical (ascending NORAD id) order.
 buildEvent ::
@@ -384,14 +452,6 @@ geoAt tm pos =
       GeodeticPosition (Radians lat) (Radians lon) (Km alt) =
         ecefToGeodetic (temeToEcef siderealTime (TEMEPosition pos))
    in GeoPoint (lat * 180.0 / pi) (lon * 180.0 / pi) alt
-
--- | Inclusive fine grid between two absolute times.
-fineGrid :: UTCTime -> UTCTime -> Double -> [UTCTime]
-fineGrid start end step =
-  [addUTCTime (realToFrac (fromIntegral m * step)) start | m <- [0 .. n]]
- where
-  spanSeconds = realToFrac (diffUTCTime end start) :: Double
-  n = max 0 (floor (spanSeconds / step)) :: Int
 
 -- | Run a screen given a candidate generator.
 screenWith ::

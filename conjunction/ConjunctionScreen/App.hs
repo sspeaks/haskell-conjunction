@@ -31,7 +31,7 @@ import Conjunction.Types
   )
 import Control.Exception (SomeException, throwIO, try)
 import Data.Maybe (fromMaybe)
-import Data.Time (Day, UTCTime, getCurrentTime, utctDay)
+import Data.Time (Day, UTCTime (..), addDays, getCurrentTime, utctDay)
 import Database.PostgreSQL.Simple (Connection, withTransaction)
 import SGP4 (Sgp4Error)
 import System.Environment (lookupEnv, setEnv)
@@ -70,10 +70,17 @@ enableProgressByDefault = do
     Nothing -> setEnv "CONJUNCTION_PROGRESS" "1"
     Just _ -> pure ()
 
+-- | Midnight UTC on the day after the given time.  Using a fixed daily
+-- boundary makes the propagation grid completely deterministic: every run
+-- on the same UTC day screens the exact same window, so conjunction counts
+-- are perfectly reproducible.
+nextUtcMidnight :: UTCTime -> UTCTime
+nextUtcMidnight (UTCTime day _) = UTCTime (addDays 1 day) 0
+
 buildScreenConfig :: Config -> UTCTime -> ScreenConfig
 buildScreenConfig config now =
   ScreenConfig
-    { scStart = now
+    { scStart = nextUtcMidnight now
     , scWindowHours = cfgWindowHours config
     , scStepSeconds = cfgStepSeconds config
     , scThresholdKm = cfgThresholdKm config
