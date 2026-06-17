@@ -30,6 +30,7 @@ import Conjunction.Types
   , ScreenConfig (..)
   )
 import Control.Exception (SomeException, throwIO, try)
+import Data.Maybe (fromMaybe)
 import Data.Time (Day, UTCTime, getCurrentTime, utctDay)
 import Database.PostgreSQL.Simple (Connection, withTransaction)
 import SGP4 (Sgp4Error)
@@ -79,7 +80,14 @@ buildScreenConfig config now =
     , scCoarseThresholdKm = cfgCoarseThresholdKm config
     , scRelVelMaxKms = cfgRelVelMaxKms config
     , scRefineStepSeconds = cfgRefineStepSeconds config
+    , scTileHours = Just (fromMaybe defaultTileHours (cfgTileHours config))
     }
+
+-- | Default tile length when @--tile-hours@ is not supplied. One hour keeps the
+-- per-tile propagation table small on the full catalog; pass a value at least
+-- the window length to screen the whole window in a single tile.
+defaultTileHours :: Double
+defaultTileHours = 1.0
 
 shouldSkip :: Config -> Day -> IO Bool
 shouldSkip config screenDate

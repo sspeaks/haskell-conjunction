@@ -8,7 +8,6 @@ module Conjunction.CMCombo
   ( candidates
   ) where
 
-import Conjunction.Parallel (parConcatSteps)
 import Conjunction.Screen
   ( Prepared (..)
   , coarseThresholdKm
@@ -22,17 +21,17 @@ import Linear.Metric (norm)
 import Linear.V3 (V3)
 import Linear.Vector ((^-^))
 
--- | All within-coarse sampled separations as @(pair, distance, step)@.
+-- | Per-step within-coarse sampled separations as @(pair, distance, step)@.
 --
 -- Each time step's all-pairs screen is an independent task; the per-step lists
--- are evaluated in parallel, mirroring Healy's distribution of the pairwise
--- comparisons across processors.
-candidates :: ScreenConfig -> Prepared -> [((Int, Int), Double, Int)]
+-- are returned unconcatenated so the screen can reduce them in bounded parallel
+-- chunks, mirroring Healy's distribution of the pairwise comparisons across
+-- processors.
+candidates :: ScreenConfig -> Prepared -> [[((Int, Int), Double, Int)]]
 candidates cfg prep =
-  parConcatSteps
-    [ stepCandidates coarse (prepColumns prep ! k) k
-    | k <- [0 .. prepSteps prep - 1]
-    ]
+  [ stepCandidates coarse (prepColumns prep ! k) k
+  | k <- [0 .. prepSteps prep - 1]
+  ]
  where
   coarse = coarseThresholdKm cfg
 

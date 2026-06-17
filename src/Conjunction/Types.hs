@@ -39,6 +39,13 @@ data ScreenConfig = ScreenConfig
   -- ^ Maximum relative velocity used to derive the coarse threshold.
   , scRefineStepSeconds :: !Double
   -- ^ Fine step used when refining a candidate's time of closest approach.
+  , scTileHours :: !(Maybe Double)
+  -- ^ Optional length, in hours, of the time tile screened at once. The window
+  -- is processed in consecutive tiles of this many hours so only one tile's
+  -- propagation table is resident at a time, bounding peak memory on large
+  -- catalogs. 'Nothing' screens the whole window in a single tile (the original
+  -- behavior). Tiling never changes the detected conjunctions: every coarse step
+  -- is still screened exactly once and the global per-pair minimum is retained.
   }
   deriving (Eq, Show)
 
@@ -56,6 +63,7 @@ defaultScreenConfig start =
     , scCoarseThresholdKm = Nothing
     , scRelVelMaxKms = 15.6
     , scRefineStepSeconds = 1.0
+    , scTileHours = Nothing
     }
 
 -- | A catalog entry to be screened.

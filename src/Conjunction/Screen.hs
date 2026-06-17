@@ -2,17 +2,19 @@
 
 -- | The shared screening engine used by both conjunction algorithms.
 --
--- 'prepare' batch-propagates every catalog object across the absolute-UTC time
--- grid and records, per step, the present objects' TEME positions plus each
--- object's radial band. The raw and optimized algorithms differ only in how
--- they turn this table into candidate pairs; everything downstream — candidate
--- reduction and time-of-closest-approach refinement — is shared here, so the
--- two algorithms necessarily produce identical events.
+-- 'prepareTile' batch-propagates every catalog object across one tile of the
+-- absolute-UTC time grid and records, per step, the present objects' TEME
+-- positions plus each object's radial band. The window is screened tile by tile
+-- so only one tile's table is resident at a time. The raw and optimized
+-- algorithms differ only in how they turn each tile's table into candidate
+-- pairs; everything downstream — candidate reduction and time-of-closest-approach
+-- refinement — is shared here, so the two algorithms necessarily produce
+-- identical events.
 module Conjunction.Screen
   ( Prepared (..)
-  , prepare
+  , prepareTile
   , coarseThresholdKm
-  , reduceCandidates
+  , tileStepCount
   , refineCandidates
   , screenWith
   , v3X
@@ -37,9 +39,12 @@ import Conjunction.Types
   , ObjectState (..)
   , ScreenConfig (..)
   )
+import Control.Concurrent (getNumCapabilities)
+import Control.Concurrent.Async (mapConcurrently)
 import Control.DeepSeq (force)
 import Control.Exception (evaluate)
-import Data.Array (Array, listArray, (!))
+import Control.Monad (when)
+import Data.Array (Array, bounds, listArray, (!))
 import qualified Data.Map.Strict as Map
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Time (UTCTime, addUTCTime, diffUTCTime)
@@ -95,41 +100,59 @@ coarseThresholdKm cfg =
  where
   derived = scThresholdKm cfg + scRelVelMaxKms cfg * (scStepSeconds cfg / 2.0)
 
--- | Propagate the whole catalog across the time grid.
-prepare :: ScreenConfig -> [CatalogObject] -> IO Prepared
-prepare cfg objs = do
-  let count = length objs
-      times = timeGrid cfg
-      steps = length times
+-- | Propagate the whole catalog across one tile's absolute-UTC sub-grid.
+--
+-- The tile covers @stepCount@ coarse steps starting at absolute step
+-- @stepOffset@; sample times are @scStart + (stepOffset + j) * step@. Object and
+-- epoch arrays are shared across tiles so only the per-tile position columns are
+-- allocated per tile. Emitted candidate step indices are tile-local
+-- (@0 .. stepCount - 1@) and the caller shifts them by @stepOffset@ to recover
+-- absolute steps.
+prepareTile ::
+  ScreenConfig ->
+  Array Int CatalogObject ->
+  Array Int SplitJD ->
+  String ->
+  Int ->
+  Int ->
+  IO Prepared
+prepareTile cfg objArr epochArr label stepOffset stepCount = do
+  let count = rangeSizeOf objArr
+      times =
+        [ addUTCTime (realToFrac (fromIntegral (stepOffset + j) * scStepSeconds cfg)) (scStart cfg)
+        | j <- [0 .. stepCount - 1]
+        ]
       timeSjds = map utcToSplitJD times
-  epochs <- parMapIO (satelliteEpochSJD . coSatellite) objs
-  let epochArr = listArray (0, count - 1) epochs
-  logInfo (printf "prepare: propagating %d objects over %d time steps" count steps)
-  propagateCounter <- newCounter "propagate" count
+  propagateCounter <- newCounter ("propagate" ++ label) count
   perObject <-
-    parMapIO (propagateTracked propagateCounter epochArr timeSjds) (zip [0 ..] objs)
+    parMapIO
+      (propagateTracked propagateCounter epochArr timeSjds)
+      [(i, objArr ! i) | i <- [0 .. count - 1]]
   finishCounter propagateCounter
   let sampleArr =
-        listArray (0, count - 1) (map (listArray (0, steps - 1)) perObject) ::
+        listArray (0, count - 1) (map (listArray (0, stepCount - 1)) perObject) ::
           Array Int (Array Int (Maybe (V3 Double, V3 Double)))
       columns =
         [ [(i, fst s) | i <- [0 .. count - 1], Just s <- [sampleArr ! i ! k]]
-        | k <- [0 .. steps - 1]
+        | k <- [0 .. stepCount - 1]
         ]
       radial =
-        [ radialBand [fst s | k <- [0 .. steps - 1], Just s <- [sampleArr ! i ! k]]
+        [ radialBand [fst s | k <- [0 .. stepCount - 1], Just s <- [sampleArr ! i ! k]]
         | i <- [0 .. count - 1]
         ]
   pure
     Prepared
-      { prepObjects = listArray (0, count - 1) objs
+      { prepObjects = objArr
       , prepEpochs = epochArr
-      , prepGrid = listArray (0, steps - 1) times
-      , prepColumns = listArray (0, steps - 1) columns
+      , prepGrid = listArray (0, stepCount - 1) times
+      , prepColumns = listArray (0, stepCount - 1) columns
       , prepRadial = listArray (0, count - 1) radial
       , prepCount = count
-      , prepSteps = steps
+      , prepSteps = stepCount
       }
+
+rangeSizeOf :: Array Int a -> Int
+rangeSizeOf arr = let (lo, hi) = bounds arr in hi - lo + 1
 
 toSample :: Either e StateVector -> Maybe (V3 Double, V3 Double)
 toSample (Right (StateVector pos vel _)) = Just (vec3ToV3 pos, vec3ToV3 vel)
@@ -172,16 +195,78 @@ radialBand (p : ps) = Just (foldl' step (r0, r0) ps)
   r0 = norm p
   step (!lo, !hi) q = let r = norm q in (min lo r, max hi r)
 
--- | Collapse raw candidate samples to one bracket step per pair.
+-- | Number of coarse steps to screen per tile.
 --
--- For each pair, the retained step is the one with the smallest sampled
--- separation. Both algorithms feed identical sample lists through this
--- reduction, yielding identical bracket steps.
-reduceCandidates :: [((Int, Int), Double, Int)] -> Map.Map (Int, Int) Int
-reduceCandidates xs = Map.map snd (foldl' ins Map.empty xs)
+-- Derived from 'scTileHours'; defaults to the whole window (a single tile) and
+-- is clamped to @[1, totalSteps]@.
+tileStepCount :: ScreenConfig -> Int -> Int
+tileStepCount cfg totalSteps =
+  case scTileHours cfg of
+    Nothing -> max 1 totalSteps
+    Just hours -> max 1 (min totalSteps (floor (hours * 3600.0 / scStepSeconds cfg)))
+
+-- | Fold one tile's per-step candidate samples into a running minimum-distance
+-- map, keyed by pair and carrying @(minDistance, absoluteStep)@.
+--
+-- Each batch of per-step lists (sized to the capability count) is forced in
+-- parallel and folded into the accumulator in step order, then discarded before
+-- the next batch, so only one batch plus the running map is live at once. The
+-- in-order fold with the same minimum-distance tie-break makes the result
+-- identical to a single left fold over every sample, so tiling and parallelism
+-- never change the retained bracket steps.
+foldStepBatches ::
+  Int ->
+  Map.Map (Int, Int) (Double, Int) ->
+  [[((Int, Int), Double, Int)]] ->
+  IO (Map.Map (Int, Int) (Double, Int))
+foldStepBatches cap = go
  where
+  go !acc [] = pure acc
+  go !acc rest = do
+    let (batch, more) = splitAt cap rest
+    forced <- mapConcurrently (evaluate . force) batch
+    let !acc' = foldl' (foldl' ins) acc forced
+    go acc' more
   ins m (pair, dist, step) = Map.insertWith keepMin pair (dist, step) m
   keepMin new old = if fst new < fst old then new else old
+
+-- | Screen the window tile by tile, accumulating one global candidate map.
+--
+-- Tiles partition the coarse grid contiguously, so every step is screened
+-- exactly once; the global map keeps each pair's minimum-separation bracket
+-- across all tiles. Only the current tile's propagation columns are resident,
+-- which bounds peak memory independently of the window length.
+screenTiles ::
+  (ScreenConfig -> Prepared -> [[((Int, Int), Double, Int)]]) ->
+  ScreenConfig ->
+  Array Int CatalogObject ->
+  Array Int SplitJD ->
+  Int ->
+  [(Int, Int)] ->
+  IO (Map.Map (Int, Int) Int)
+screenTiles generate cfg objArr epochArr numTiles tiles = do
+  capabilities <- getNumCapabilities
+  acc <- go (max 1 capabilities) Map.empty (zip [1 :: Int ..] tiles)
+  pure (Map.map snd acc)
+ where
+  go _ !acc [] = pure acc
+  go cap !acc ((ti, (stepOffset, stepCount)) : rest) = do
+    let label = if numTiles > 1 then printf " (tile %d/%d)" ti numTiles else ""
+    tilePrep <- prepareTile cfg objArr epochArr label stepOffset stepCount
+    let shifted =
+          map (map (\(pair, dist, k) -> (pair, dist, stepOffset + k))) (generate cfg tilePrep)
+    !acc' <- foldStepBatches cap acc shifted
+    when (numTiles > 1) $
+      logInfo (printf "tile %d/%d folded; running candidate pairs %d" ti numTiles (Map.size acc'))
+    go cap acc' rest
+
+-- | Number of candidate pairs refined per batch.
+--
+-- Large enough to keep all capabilities busy, small enough that one batch of
+-- per-pair @Maybe@ results and their transient fine-propagation garbage stays a
+-- small fraction of the heap.
+refineBatchSize :: Int -> Int
+refineBatchSize capabilities = max 1 capabilities * 25000
 
 -- | Refine each candidate pair to its true time of closest approach.
 --
@@ -192,10 +277,24 @@ refineCandidates :: ScreenConfig -> Prepared -> Map.Map (Int, Int) Int -> IO [Co
 refineCandidates cfg prep cands = do
   let pairs = Map.toList cands
   counter <- newCounter "refine" (length pairs)
-  results <- parMapIO (refineTracked counter) pairs
+  capabilities <- getNumCapabilities
+  events <- refineBatches counter (refineBatchSize capabilities) pairs []
   finishCounter counter
-  pure (catMaybes results)
+  pure events
  where
+  -- Refine in bounded batches, collapsing each batch with 'catMaybes' before
+  -- starting the next. The candidate set dwarfs the actual conjunction count
+  -- (the coarse gate admits far more pairs than ever approach within the final
+  -- threshold), so holding every pair's @Maybe@ result live at once exhausted
+  -- the heap. Forcing each batch to its kept events discards the non-conjunction
+  -- results immediately and bounds peak memory to one batch.
+  refineBatches _ _ [] acc = pure (concat (reverse acc))
+  refineBatches counter bs rest acc = do
+    let (batch, more) = splitAt bs rest
+    results <- parMapIO (refineTracked counter) batch
+    let !kept = catMaybes results
+    _ <- evaluate (length kept)
+    refineBatches counter bs more (kept : acc)
   refineTracked counter pair = do
     result <- refineOne pair
     tick counter
@@ -296,18 +395,41 @@ fineGrid start end step =
 
 -- | Run a screen given a candidate generator.
 screenWith ::
-  (ScreenConfig -> Prepared -> [((Int, Int), Double, Int)]) ->
+  (ScreenConfig -> Prepared -> [[((Int, Int), Double, Int)]]) ->
   ScreenConfig ->
   [CatalogObject] ->
   IO [ConjunctionEvent]
 screenWith generate cfg objs = do
-  prep <- prepare cfg objs
-  cands <- withPhase "candidates" $ do
-    let reduced = reduceCandidates (generate cfg prep)
-    !pairCount <- evaluate (Map.size reduced)
-    logInfo (printf "candidates: %d bracket pairs to refine" pairCount)
-    pure reduced
-  refineCandidates cfg prep cands
+  let n = length objs
+      objArr = listArray (0, n - 1) objs
+      fullTimes = timeGrid cfg
+      totalSteps = length fullTimes
+  epochs <- parMapIO (satelliteEpochSJD . coSatellite) objs
+  let epochArr = listArray (0, n - 1) epochs
+      tileSteps = tileStepCount cfg totalSteps
+      tiles = [(lo, min tileSteps (totalSteps - lo)) | lo <- [0, tileSteps .. totalSteps - 1]]
+      numTiles = length tiles
+  logInfo
+    ( printf
+        "screen: %d objects, %d steps, %d tile(s) of <=%d steps"
+        n
+        totalSteps
+        numTiles
+        tileSteps
+    )
+  cands <- withPhase "candidates" (screenTiles generate cfg objArr epochArr numTiles tiles)
+  logInfo (printf "candidates: %d bracket pairs to refine" (Map.size cands))
+  let refineCtx =
+        Prepared
+          { prepObjects = objArr
+          , prepEpochs = epochArr
+          , prepGrid = listArray (0, totalSteps - 1) fullTimes
+          , prepColumns = listArray (0, -1) []
+          , prepRadial = listArray (0, -1) []
+          , prepCount = n
+          , prepSteps = totalSteps
+          }
+  refineCandidates cfg refineCtx cands
 
 v3X :: V3 Double -> Double
 v3X (V3 x _ _) = x

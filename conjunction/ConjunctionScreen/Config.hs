@@ -52,6 +52,7 @@ data Config = Config
   , cfgCoarseThresholdKm :: !(Maybe Double)
   , cfgRelVelMaxKms :: !Double
   , cfgRefineStepSeconds :: !Double
+  , cfgTileHours :: !(Maybe Double)
   , cfgMode :: !ScreenMode
   , cfgValidateLimit :: !Int
   , cfgSkipIfComputedToday :: !Bool
@@ -123,9 +124,12 @@ configParser = do
       auto
       ( long "step-seconds"
           <> metavar "SECONDS"
-          <> value 60.0
+          <> value 10.0
           <> showDefault
-          <> help "Coarse propagation sampling step in seconds."
+          <> help
+            "Coarse propagation sampling step in seconds. Smaller steps shrink the\
+            \ derived coarse gate and so the candidate set, at the cost of more\
+            \ propagation; combine with --tile-hours to bound memory."
       )
   cfgThresholdKm <-
     option
@@ -162,6 +166,18 @@ configParser = do
           <> showDefault
           <> help "Fine step used to refine each candidate's time of closest approach."
       )
+  cfgTileHours <-
+    optional $
+      option
+        auto
+        ( long "tile-hours"
+            <> metavar "HOURS"
+            <> help
+              "Screen the window in consecutive tiles of this many hours so only one\
+              \ tile's propagation table is resident at a time, bounding peak memory.\
+              \ Defaults to 1 hour; pass a value at least the window length to screen\
+              \ the whole window at once."
+        )
   cfgMode <-
     option
       (maybeReader readMode)

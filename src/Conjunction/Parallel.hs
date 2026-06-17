@@ -2,19 +2,16 @@
 --
 -- Healy's CM-COMBO is fundamentally a parallel algorithm: the all-pairs distance
 -- comparisons are distributed across processors. These helpers provide the
--- modern equivalents — order-preserving parallel IO for the propagation and
--- refinement phases, and a deterministic parallel strategy for the pure
--- per-time-step pairwise screen. All helpers preserve results exactly, so
--- parallelism never changes the detected conjunctions.
+-- modern equivalent — order-preserving parallel IO that bounds the number of
+-- in-flight chunks to the capability count, used for the propagation and
+-- refinement phases and for the chunked candidate reduction. They preserve
+-- results exactly, so parallelism never changes the detected conjunctions.
 module Conjunction.Parallel
   ( parMapIO
-  , parConcatSteps
   ) where
 
 import Control.Concurrent (getNumCapabilities)
 import Control.Concurrent.Async (mapConcurrently)
-import Control.DeepSeq (NFData)
-import Control.Parallel.Strategies (parList, rdeepseq, withStrategy)
 
 -- | Order-preserving parallel @mapM@ bounded to the capability count.
 --
@@ -38,11 +35,3 @@ chunkInto n xs
   size = max 1 ((length xs + n - 1) `div` n)
   go [] = []
   go ys = let (chunk, rest) = splitAt size ys in chunk : go rest
-
--- | Evaluate a list of per-step result lists in parallel, then concatenate.
---
--- Each inner list is forced to normal form by a spark; this is the pure,
--- deterministic counterpart of distributing the per-time-step pairwise screens
--- across processors.
-parConcatSteps :: (NFData b) => [[b]] -> [b]
-parConcatSteps = concat . withStrategy (parList rdeepseq)

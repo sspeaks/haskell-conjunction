@@ -12,7 +12,6 @@ module Conjunction.Grid
   ( candidates
   ) where
 
-import Conjunction.Parallel (parConcatSteps)
 import Conjunction.Screen (Prepared (..), coarseThresholdKm)
 import Conjunction.Types (ScreenConfig)
 import Data.Array ((!))
@@ -21,16 +20,16 @@ import Linear.Metric (norm)
 import Linear.V3 (V3 (V3))
 import Linear.Vector ((^-^))
 
--- | All within-coarse sampled separations as @(pair, distance, step)@.
+-- | Per-step within-coarse sampled separations as @(pair, distance, step)@.
 --
 -- Each time step builds its own spatial hash and emits candidates
--- independently; the per-step lists are evaluated in parallel.
-candidates :: ScreenConfig -> Prepared -> [((Int, Int), Double, Int)]
+-- independently; the per-step lists are returned unconcatenated so the screen
+-- can reduce them in bounded parallel chunks.
+candidates :: ScreenConfig -> Prepared -> [[((Int, Int), Double, Int)]]
 candidates cfg prep =
-  parConcatSteps
-    [ stepCandidates prep coarse (prepColumns prep ! k) k
-    | k <- [0 .. prepSteps prep - 1]
-    ]
+  [ stepCandidates prep coarse (prepColumns prep ! k) k
+  | k <- [0 .. prepSteps prep - 1]
+  ]
  where
   coarse = coarseThresholdKm cfg
 

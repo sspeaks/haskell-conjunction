@@ -41,6 +41,7 @@ main = do
   runTest "mean-anomaly nudge is a sub-5km near miss" testNearMiss
   runTest "band-separated objects do not conjunct" testSeparatedNoConjunction
   runTest "expected event set is exactly produced" testExactEventSet
+  runTest "tiled screen matches whole-window screen" testTilingMatchesWhole
   runTest "empty and singleton catalogs yield no events" testDegenerateCatalogs
 
 -- Fixtures ------------------------------------------------------------------
@@ -152,6 +153,27 @@ testExactEventSet = do
       expected = [(100, 101), (100, 102), (101, 102), (200, 201)]
   unless (actual == expected) $
     failTest ("expected event pairs " <> show expected <> " but got " <> show actual)
+
+-- | Screening the window in small tiles must yield exactly the same events
+-- (pairs, miss distances, and times of closest approach) as screening the whole
+-- window at once. This guards the time-tiling memory optimization against
+-- changing any detected conjunction.
+testTilingMatchesWhole :: IO ()
+testTilingMatchesWhole = do
+  objects <- loadFixture
+  whole <- screenOptimized fixtureConfig objects
+  tiled <- screenOptimized fixtureConfig {scTileHours = Just 0.05} objects
+  let summarize = sort . map eventSummary
+  unless (summarize whole == summarize tiled) $
+    failTest
+      ( "tiled screen differs from whole-window screen: whole="
+          <> show (summarize whole)
+          <> " tiled="
+          <> show (summarize tiled)
+      )
+
+eventSummary :: ConjunctionEvent -> ((Int, Int), Double, UTCTime)
+eventSummary event = (pairKey event, ceMissDistanceKm event, ceTca event)
 
 testDegenerateCatalogs :: IO ()
 testDegenerateCatalogs = do
