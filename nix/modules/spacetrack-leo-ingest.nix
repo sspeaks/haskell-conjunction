@@ -331,6 +331,8 @@ in
     systemd.timers.spacetrack-leo-ingest-catch-up = mkIf cfg.catchUp.enable {
       description = "Catch up Space-Track LEO ingest after boot";
       wantedBy = [ "timers.target" ];
+      after = optional cfg.database.local.enable "postgresql.service";
+      requires = optional cfg.database.local.enable "postgresql.service";
       timerConfig = {
         Unit = "spacetrack-leo-ingest-if-needed.service";
         OnBootSec = cfg.catchUp.onBootSec;
