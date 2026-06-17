@@ -34,6 +34,7 @@ library
         Conjunction.CMCombo
         Conjunction.Grid
         Conjunction.Parallel
+        Conjunction.Progress
         Conjunction.Run
         Conjunction.Screen
         Conjunction.Types

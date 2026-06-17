@@ -33,10 +33,14 @@ import Control.Exception (SomeException, throwIO, try)
 import Data.Time (Day, UTCTime, getCurrentTime, utctDay)
 import Database.PostgreSQL.Simple (Connection, withTransaction)
 import SGP4 (Sgp4Error)
+import System.Environment (lookupEnv, setEnv)
 import System.Exit (exitFailure)
+import System.IO (BufferMode (LineBuffering), hSetBuffering, stderr)
 
 main :: IO ()
 main = do
+  hSetBuffering stderr LineBuffering
+  enableProgressByDefault
   config <- parseConfig
   now <- getCurrentTime
   let screenCfg = buildScreenConfig config now
@@ -53,6 +57,17 @@ main = do
         ModeValidate -> runValidate config screenCfg objects
         ModeOptimized -> runStore conn config screenCfg objects "optimized" screenOptimized
         ModeRaw -> runStore conn config screenCfg objects "raw" screenRaw
+
+-- | Enable progress logging unless the operator has set @CONJUNCTION_PROGRESS@
+-- explicitly. The screening library reads this variable, so setting it here
+-- makes the production binary report progress by default while leaving the
+-- test suite (which uses the library directly) silent.
+enableProgressByDefault :: IO ()
+enableProgressByDefault = do
+  existing <- lookupEnv "CONJUNCTION_PROGRESS"
+  case existing of
+    Nothing -> setEnv "CONJUNCTION_PROGRESS" "1"
+    Just _ -> pure ()
 
 buildScreenConfig :: Config -> UTCTime -> ScreenConfig
 buildScreenConfig config now =

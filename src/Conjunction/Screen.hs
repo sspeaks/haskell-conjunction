@@ -22,6 +22,14 @@ module Conjunction.Screen
 
 import Conjunction.Catalog (timeGrid)
 import Conjunction.Parallel (parMapIO)
+import Conjunction.Progress
+  ( Counter
+  , finishCounter
+  , logInfo
+  , newCounter
+  , tick
+  , withPhase
+  )
 import Conjunction.Types
   ( CatalogObject (..)
   , ConjunctionEvent (..)
@@ -29,6 +37,8 @@ import Conjunction.Types
   , ObjectState (..)
   , ScreenConfig (..)
   )
+import Control.DeepSeq (force)
+import Control.Exception (evaluate)
 import Data.Array (Array, listArray, (!))
 import qualified Data.Map.Strict as Map
 import Data.Maybe (catMaybes, fromMaybe)
@@ -56,6 +66,7 @@ import SGP4.Time
   , satelliteEpochSJD
   , utcToSplitJD
   )
+import Text.Printf (printf)
 
 -- | The propagated screening table.
 data Prepared = Prepared
@@ -93,7 +104,11 @@ prepare cfg objs = do
       timeSjds = map utcToSplitJD times
   epochs <- parMapIO (satelliteEpochSJD . coSatellite) objs
   let epochArr = listArray (0, count - 1) epochs
-  perObject <- parMapIO (propagateObject epochArr timeSjds) (zip [0 ..] objs)
+  logInfo (printf "prepare: propagating %d objects over %d time steps" count steps)
+  propagateCounter <- newCounter "propagate" count
+  perObject <-
+    parMapIO (propagateTracked propagateCounter epochArr timeSjds) (zip [0 ..] objs)
+  finishCounter propagateCounter
   let sampleArr =
         listArray (0, count - 1) (map (listArray (0, steps - 1)) perObject) ::
           Array Int (Array Int (Maybe (V3 Double, V3 Double)))
@@ -119,6 +134,24 @@ prepare cfg objs = do
 toSample :: Either e StateVector -> Maybe (V3 Double, V3 Double)
 toSample (Right (StateVector pos vel _)) = Just (vec3ToV3 pos, vec3ToV3 vel)
 toSample (Left _) = Nothing
+
+-- | Propagate one object and force its samples to normal form.
+--
+-- Forcing here makes the propagation phase perform the real work (rather than
+-- deferring it lazily into later phases), so the reported propagation progress
+-- reflects genuine completion. The progress counter is ticked once the object's
+-- samples are fully realized.
+propagateTracked ::
+  Counter ->
+  Array Int SplitJD ->
+  [SplitJD] ->
+  (Int, CatalogObject) ->
+  IO [Maybe (V3 Double, V3 Double)]
+propagateTracked counter epochArr timeSjds entry = do
+  samples <- propagateObject epochArr timeSjds entry
+  !forced <- evaluate (force samples)
+  tick counter
+  pure forced
 
 -- | Batch-propagate one object across the grid, in absolute-UTC order.
 propagateObject ::
@@ -156,9 +189,17 @@ reduceCandidates xs = Map.map snd (foldl' ins Map.empty xs)
 -- window; the minimum-distance fine sample becomes the reported approach. Only
 -- approaches within the final threshold are emitted.
 refineCandidates :: ScreenConfig -> Prepared -> Map.Map (Int, Int) Int -> IO [ConjunctionEvent]
-refineCandidates cfg prep cands =
-  catMaybes <$> parMapIO refineOne (Map.toList cands)
+refineCandidates cfg prep cands = do
+  let pairs = Map.toList cands
+  counter <- newCounter "refine" (length pairs)
+  results <- parMapIO (refineTracked counter) pairs
+  finishCounter counter
+  pure (catMaybes results)
  where
+  refineTracked counter pair = do
+    result <- refineOne pair
+    tick counter
+    pure result
   refineOne ((i, j), k) = do
     let objI = prepObjects prep ! i
         objJ = prepObjects prep ! j
@@ -261,7 +302,12 @@ screenWith ::
   IO [ConjunctionEvent]
 screenWith generate cfg objs = do
   prep <- prepare cfg objs
-  refineCandidates cfg prep (reduceCandidates (generate cfg prep))
+  cands <- withPhase "candidates" $ do
+    let reduced = reduceCandidates (generate cfg prep)
+    !pairCount <- evaluate (Map.size reduced)
+    logInfo (printf "candidates: %d bracket pairs to refine" pairCount)
+    pure reduced
+  refineCandidates cfg prep cands
 
 v3X :: V3 Double -> Double
 v3X (V3 x _ _) = x
