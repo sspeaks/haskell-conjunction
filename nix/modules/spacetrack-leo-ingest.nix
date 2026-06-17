@@ -51,6 +51,9 @@ let
 
   guardedConjunctionArgs = conjunctionArgs ++ [ "--skip-if-computed-today" ];
 
+  conjunctionRtsArgs =
+    optionals (cfg.conjunction.rtsOptions != [ ]) ([ "+RTS" ] ++ cfg.conjunction.rtsOptions ++ [ "-RTS" ]);
+
   serviceConfig = {
     Type = "oneshot";
     User = cfg.user;
@@ -233,6 +236,22 @@ in
       default = [ ];
       description = "Additional command-line arguments passed to conjunction-screen (for example screening window or threshold overrides).";
     };
+
+    conjunction.rtsOptions = mkOption {
+      type = types.listOf types.str;
+      default = [ "-N" "-c" ];
+      example = [ "-N" "-c" "-M20g" ];
+      description = ''
+        GHC RTS options passed to conjunction-screen as a @+RTS ... -RTS@ block.
+
+        The compacting collector (@-c@) collects the large propagation table in
+        place instead of copying it, which avoids the doubling of peak residency
+        that otherwise drives the full-catalog screen into the OOM killer; @-N@
+        uses all available cores. Add a hard heap cap such as @-M20g@ to turn a
+        runaway into a clean heap-overflow error instead of a system-wide OOM.
+        Set to @[ ]@ to pass no RTS options.
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
@@ -296,7 +315,7 @@ in
       wantedBy = [ ];
       inherit (serviceOrdering) wants requires;
       after = serviceOrdering.after ++ [ "spacetrack-leo-ingest.service" ];
-      script = "exec ${cfg.package}/bin/conjunction-screen ${lib.escapeShellArgs conjunctionArgs}";
+      script = "exec ${cfg.package}/bin/conjunction-screen ${lib.escapeShellArgs (conjunctionArgs ++ conjunctionRtsArgs)}";
       serviceConfig = serviceConfig;
     };
 
@@ -305,7 +324,7 @@ in
       wantedBy = [ ];
       inherit (serviceOrdering) wants requires;
       after = serviceOrdering.after ++ [ "spacetrack-leo-ingest-if-needed.service" ];
-      script = "exec ${cfg.package}/bin/conjunction-screen ${lib.escapeShellArgs guardedConjunctionArgs}";
+      script = "exec ${cfg.package}/bin/conjunction-screen ${lib.escapeShellArgs (guardedConjunctionArgs ++ conjunctionRtsArgs)}";
       serviceConfig = serviceConfig;
     };
 
