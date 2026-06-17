@@ -67,14 +67,31 @@ runMigrations conn = do
   traverse_ (execute_ conn) indexes
 
 -- | Read every active catalog object that carries a usable TLE.
+--
+-- Objects that share an identical orbital state — the same mean motion,
+-- eccentricity, inclination, RAAN, argument of perigee, and mean anomaly — are
+-- collapsed to a single representative (the lowest NORAD id). Space-Track
+-- catalogs the modules of an assembled structure and its docked visitors
+-- separately (for example the ISS carries nine catalog entries: six modules plus
+-- whatever Soyuz/Dragon/Progress is berthed), and copies one element set across
+-- all of them. Screening them individually reports the structure conjuncting
+-- with itself and reports every genuine close approach near it once per member.
+-- Collapsing to one representative removes both artifacts while leaving the full
+-- catalog untouched in the database.
 readCatalog :: Connection -> IO [(Int, Maybe String, TLE)]
 readCatalog conn = do
   rows <-
     query_
       conn
-      "SELECT norad_cat_id, object_name, tle_line1, tle_line2\
+      "SELECT norad_cat_id, object_name, tle_line1, tle_line2 FROM (\
+      \ SELECT DISTINCT ON\
+      \ (mean_motion, eccentricity, inclination_deg, raan_deg, arg_of_pericenter_deg, mean_anomaly_deg)\
+      \ norad_cat_id, object_name, tle_line1, tle_line2\
       \ FROM leo_gp_current\
       \ WHERE active = true AND tle_line1 IS NOT NULL AND tle_line2 IS NOT NULL\
+      \ ORDER BY mean_motion, eccentricity, inclination_deg, raan_deg,\
+      \ arg_of_pericenter_deg, mean_anomaly_deg, norad_cat_id ASC\
+      \ ) collapsed\
       \ ORDER BY norad_cat_id ASC" ::
       IO [(Int, Maybe T.Text, T.Text, T.Text)]
   pure
