@@ -1,5 +1,13 @@
 import { create } from "zustand";
-import type { Conjunction, Run, Satellite } from "../api/types";
+import type {
+  Conjunction,
+  ObserverLocation,
+  Run,
+  Satellite,
+  VisibilityOptions,
+  VisibleConjunction,
+  VisiblePass,
+} from "../api/types";
 import type { Regime } from "../cesium/regime";
 import { REGIMES } from "../cesium/regime";
 import type { ColorMode } from "../cesium/colorModes";
@@ -21,6 +29,15 @@ interface AppState {
   shellVisibility: Record<ShellName, boolean>;
   inertialMode: boolean;
 
+  // Visibility feature
+  observerLocation: ObserverLocation | null;
+  visibilityOptions: VisibilityOptions;
+  visiblePasses: VisiblePass[];
+  visibleConjunctions: VisibleConjunction[];
+  selectedPass: VisiblePass | null;
+  visibilityLoading: boolean;
+  pickingObserver: boolean;
+
   setData: (sats: Satellite[], conjs: Conjunction[], runs: Run[]) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -31,11 +48,47 @@ interface AppState {
   setColorMode: (mode: ColorMode) => void;
   toggleShell: (shell: ShellName) => void;
   toggleInertial: () => void;
+  setObserverLocation: (loc: ObserverLocation | null) => void;
+  setVisibilityOptions: (opts: Partial<VisibilityOptions>) => void;
+  setVisibilityResults: (passes: VisiblePass[], conjunctions: VisibleConjunction[]) => void;
+  setVisibilityLoading: (loading: boolean) => void;
+  selectPass: (pass: VisiblePass | null) => void;
+  setPickingObserver: (picking: boolean) => void;
 }
 
 const allRegimesVisible = Object.fromEntries(
   REGIMES.map((r) => [r, true]),
 ) as Record<Regime, boolean>;
+
+const loadObserver = (): ObserverLocation | null => {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = localStorage.getItem("observerLocation");
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<ObserverLocation>;
+    if (
+      typeof parsed.latDeg === "number" &&
+      typeof parsed.lonDeg === "number" &&
+      typeof parsed.heightKm === "number"
+    ) {
+      return {
+        latDeg: parsed.latDeg,
+        lonDeg: parsed.lonDeg,
+        heightKm: parsed.heightKm,
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
 
 export const useStore = create<AppState>((set) => ({
   satellites: [],
@@ -52,6 +105,20 @@ export const useStore = create<AppState>((set) => ({
   colorMode: "regime",
   shellVisibility: { LEO: false, MEO: false, GEO: false },
   inertialMode: false,
+
+  // Visibility feature
+  observerLocation: loadObserver(),
+  visibilityOptions: {
+    windowHours: 24,
+    minElevationDeg: 10,
+    sunMaxElevationDeg: -6,
+    magnitudeCutoff: 6.5,
+  },
+  visiblePasses: [],
+  visibleConjunctions: [],
+  selectedPass: null,
+  visibilityLoading: false,
+  pickingObserver: false,
 
   setData: (satellites, conjunctions, runs) =>
     set({
@@ -77,4 +144,21 @@ export const useStore = create<AppState>((set) => ({
       shellVisibility: { ...s.shellVisibility, [shell]: !s.shellVisibility[shell] },
     })),
   toggleInertial: () => set((s) => ({ inertialMode: !s.inertialMode })),
+  setObserverLocation: (observerLocation) => {
+    if (typeof localStorage !== "undefined") {
+      if (observerLocation) {
+        localStorage.setItem("observerLocation", JSON.stringify(observerLocation));
+      } else {
+        localStorage.removeItem("observerLocation");
+      }
+    }
+    set({ observerLocation });
+  },
+  setVisibilityOptions: (opts) =>
+    set((s) => ({ visibilityOptions: { ...s.visibilityOptions, ...opts } })),
+  setVisibilityResults: (visiblePasses, visibleConjunctions) =>
+    set({ visiblePasses, visibleConjunctions, visibilityLoading: false }),
+  setVisibilityLoading: (visibilityLoading) => set({ visibilityLoading }),
+  selectPass: (selectedPass) => set({ selectedPass }),
+  setPickingObserver: (pickingObserver) => set({ pickingObserver }),
 }));

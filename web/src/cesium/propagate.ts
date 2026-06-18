@@ -4,6 +4,7 @@ import {
   ExtrapolationType,
   JulianDate,
   LagrangePolynomialApproximation,
+  ReferenceFrame,
   SampledPositionProperty,
 } from "cesium";
 
@@ -38,6 +39,22 @@ export function propagateEcef(rec: SatRec, date: Date): Cartesian3 | null {
   return new Cartesian3(ecf.x * 1000, ecf.y * 1000, ecf.z * 1000);
 }
 
+/**
+ * Propagate to a JS Date and return an inertial (TEME/ECI) Cartesian3 in
+ * metres, or null on a propagation error / decay. Unlike propagateEcef this
+ * keeps satellite.js's native TEME frame (no GMST rotation) so callers can
+ * render closed orbit geometry in an inertial frame.
+ */
+export function propagateEciMeters(rec: SatRec, date: Date): Cartesian3 | null {
+  const pv = satellite.propagate(rec, date);
+  const pos = pv?.position;
+  if (!pos || typeof pos === "boolean") return null;
+  if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y) || !Number.isFinite(pos.z)) {
+    return null;
+  }
+  return new Cartesian3(pos.x * 1000, pos.y * 1000, pos.z * 1000);
+}
+
 /** Geodetic sub-point (degrees + km altitude) at a given date, or null. */
 export function propagateGeodetic(
   rec: SatRec,
@@ -56,9 +73,11 @@ export function propagateGeodetic(
 }
 
 /**
- * Build a Cesium SampledPositionProperty (FIXED/ECEF, metres) by propagating a
- * TLE across [startJd, startJd + durationSec] at a fixed step. Used for the
- * conjunction theater's orbit trails.
+ * Build a Cesium SampledPositionProperty in the INERTIAL (TEME) frame, in
+ * metres, by propagating a TLE across [startJd, startJd + durationSec] at a
+ * fixed step. Cesium rotates inertial samples into the Earth-fixed frame at
+ * render time, so orbit-trail paths drawn from this property are not smeared
+ * by Earth's rotation. Used for the conjunction theater's orbit trails.
  */
 export function buildSampledPosition(
   rec: SatRec,
@@ -66,7 +85,7 @@ export function buildSampledPosition(
   durationSec: number,
   stepSec = 10,
 ): SampledPositionProperty {
-  const prop = new SampledPositionProperty();
+  const prop = new SampledPositionProperty(ReferenceFrame.INERTIAL);
   prop.setInterpolationOptions({
     interpolationAlgorithm: LagrangePolynomialApproximation,
     interpolationDegree: 5,
@@ -76,8 +95,34 @@ export function buildSampledPosition(
 
   for (let t = 0; t <= durationSec; t += stepSec) {
     const jd = JulianDate.addSeconds(startJd, t, new JulianDate());
-    const pos = propagateEcef(rec, JulianDate.toDate(jd));
+    const pos = propagateEciMeters(rec, JulianDate.toDate(jd));
     if (pos) prop.addSample(jd, pos);
   }
   return prop;
+}
+
+/**
+ * Sample one full orbital period as inertial (TEME) points in metres, for a
+ * closed orbit ring. The returned points are in the TEME frame; the caller
+ * rotates them into the Earth-fixed frame at the current time (e.g. via
+ * Transforms.computeTemeToPseudoFixedMatrix) so the ring renders as a clean
+ * closed circle/ellipse. The first point is appended again at the end to
+ * explicitly close the loop.
+ */
+export function buildOrbitRingPoints(
+  rec: SatRec,
+  startJd: JulianDate,
+  periodSec: number,
+  stepSec: number,
+): Cartesian3[] {
+  const points: Cartesian3[] = [];
+  for (let t = 0; t <= periodSec; t += stepSec) {
+    const jd = JulianDate.addSeconds(startJd, t, new JulianDate());
+    const p = propagateEciMeters(rec, JulianDate.toDate(jd));
+    if (p) points.push(p);
+  }
+  if (points.length > 1) {
+    points.push(points[0].clone());
+  }
+  return points;
 }

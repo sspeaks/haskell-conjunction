@@ -31,6 +31,7 @@ common warnings
 library
     import:           warnings
     exposed-modules:
+        Brightness
         Conjunction.Catalog
         Conjunction.CMCombo
         Conjunction.Grid
@@ -55,6 +56,7 @@ library
         deepseq >=1.5 && <1.6,
         linear >=1.22 && <1.24,
         parallel >=3.2 && <3.3,
+        text >=2.0 && <2.2,
         time >=1.12 && <1.15
     hs-source-dirs:   src
     default-language: GHC2024
@@ -84,12 +86,14 @@ executable spacetrack-leo-ingest
         SpaceTrack.Config
         SpaceTrack.Database
         SpaceTrack.Json
+        SpaceTrack.Satcat
         SpaceTrack.Throttle
         SpaceTrack.Types
     build-depends:
         aeson >=2.1 && <2.3,
         base ^>=4.20.2.0,
         bytestring >=0.11 && <0.13,
+        cassava >=0.5 && <0.6,
         haskell-conjunction,
         http-client >=0.7 && <0.8,
         http-client-tls >=0.3 && <0.4,

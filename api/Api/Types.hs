@@ -11,6 +11,7 @@ module Api.Types
   , RunRow (..)
   ) where
 
+import Brightness (resolveStdMag)
 import Data.Aeson (ToJSON (..), Value, object, (.=))
 import Data.Int (Int64)
 import Data.Text (Text)
@@ -35,24 +36,48 @@ data SatelliteRow = SatelliteRow
   , satApoapsisKm :: !(Maybe Double)
   , satPeriapsisKm :: !Double
   , satSemimajorAxisKm :: !(Maybe Double)
+  , satRcsM2 :: !(Maybe Double)
+  , satRcsSize :: !(Maybe Text)
+  , satStdMag :: !(Maybe Double)
   }
 
 instance FromRow SatelliteRow where
-  fromRow =
-    SatelliteRow
-      <$> field
-      <*> field
-      <*> field
-      <*> field
-      <*> field
-      <*> field
-      <*> field
-      <*> field
-      <*> field
-      <*> field
-      <*> field
-      <*> field
-      <*> field
+  fromRow = do
+    satNoradId' <- field
+    satName' <- field
+    satObjectType' <- field
+    satTleLine1' <- field
+    satTleLine2' <- field
+    satInclinationDeg' <- field
+    satRaanDeg' <- field
+    satEccentricity' <- field
+    satMeanMotion' <- field
+    satPeriodMin' <- field
+    satApoapsisKm' <- field
+    satPeriapsisKm' <- field
+    satSemimajorAxisKm' <- field
+    satRcsM2' <- field
+    satRcsSize' <- field
+    let satStdMag' = resolveStdMag (fromIntegral satNoradId') satObjectType' satRcsM2' satRcsSize'
+    pure
+      SatelliteRow
+        { satNoradId = satNoradId'
+        , satName = satName'
+        , satObjectType = satObjectType'
+        , satTleLine1 = satTleLine1'
+        , satTleLine2 = satTleLine2'
+        , satInclinationDeg = satInclinationDeg'
+        , satRaanDeg = satRaanDeg'
+        , satEccentricity = satEccentricity'
+        , satMeanMotion = satMeanMotion'
+        , satPeriodMin = satPeriodMin'
+        , satApoapsisKm = satApoapsisKm'
+        , satPeriapsisKm = satPeriapsisKm'
+        , satSemimajorAxisKm = satSemimajorAxisKm'
+        , satRcsM2 = satRcsM2'
+        , satRcsSize = satRcsSize'
+        , satStdMag = satStdMag'
+        }
 
 instance ToJSON SatelliteRow where
   toJSON s =
@@ -70,6 +95,9 @@ instance ToJSON SatelliteRow where
       , "apoapsisKm" .= satApoapsisKm s
       , "periapsisKm" .= satPeriapsisKm s
       , "semimajorAxisKm" .= satSemimajorAxisKm s
+      , "rcsM2" .= satRcsM2 s
+      , "rcsSize" .= satRcsSize s
+      , "stdMag" .= satStdMag s
       ]
 
 -- --------------------------------------------------------------------------- --

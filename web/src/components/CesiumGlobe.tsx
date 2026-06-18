@@ -1,11 +1,15 @@
 import { useEffect, useRef } from "react";
 import {
+  Cartographic,
   ClockRange,
   ClockStep,
   EllipsoidTerrainProvider,
   ImageryLayer,
   JulianDate,
+  Math as CesiumMath,
   OpenStreetMapImageryProvider,
+  ScreenSpaceEventHandler,
+  ScreenSpaceEventType,
   Viewer as CesiumViewer,
 } from "cesium";
 import { Viewer, useCesium } from "resium";
@@ -15,6 +19,7 @@ import { ConjunctionTheater } from "../conjunction/theater";
 import { SatelliteFocus } from "../cesium/SatelliteFocus";
 import { AltitudeShells, SHELL_NAMES } from "../cesium/AltitudeShells";
 import { InertialCamera } from "../cesium/InertialCamera";
+import { VisibilityPredictor } from "../cesium/VisibilityPredictor";
 import type { Regime } from "../cesium/regime";
 
 // Token-free providers: flat WGS84 ellipsoid + OpenStreetMap imagery.
@@ -34,15 +39,21 @@ function SceneContent() {
   const focusRef = useRef<SatelliteFocus | null>(null);
   const shellsRef = useRef<AltitudeShells | null>(null);
   const inertialRef = useRef<InertialCamera | null>(null);
+  const predictorRef = useRef<VisibilityPredictor | null>(null);
   const satellites = useStore((s) => s.satellites);
   const satById = useStore((s) => s.satById);
   const selectedSat = useStore((s) => s.selectedSat);
   const selectedConjunction = useStore((s) => s.selectedConjunction);
+  const observerLocation = useStore((s) => s.observerLocation);
+  const selectedPass = useStore((s) => s.selectedPass);
+  const pickingObserver = useStore((s) => s.pickingObserver);
   const visibleRegimes = useStore((s) => s.visibleRegimes);
   const colorMode = useStore((s) => s.colorMode);
   const shellVisibility = useStore((s) => s.shellVisibility);
   const inertialMode = useStore((s) => s.inertialMode);
   const selectSat = useStore((s) => s.selectSat);
+  const setObserverLocation = useStore((s) => s.setObserverLocation);
+  const setPickingObserver = useStore((s) => s.setPickingObserver);
 
   // Configure the clock once when the viewer is ready (24h window, 60x).
   useEffect(() => {
@@ -94,6 +105,17 @@ function SceneContent() {
     };
   }, [viewer]);
 
+  // Visibility predictor overlays.
+  useEffect(() => {
+    if (!viewer) return;
+    const p = new VisibilityPredictor(viewer as CesiumViewer);
+    predictorRef.current = p;
+    return () => {
+      p.destroy();
+      predictorRef.current = null;
+    };
+  }, [viewer]);
+
   // Apply regime visibility toggles.
   useEffect(() => {
     const layer = layerRef.current;
@@ -128,6 +150,49 @@ function SceneContent() {
   useEffect(() => {
     inertialRef.current?.setEnabled(inertialMode);
   }, [inertialMode]);
+
+  // Observer marker.
+  useEffect(() => {
+    predictorRef.current?.setObserver(observerLocation);
+  }, [observerLocation]);
+
+  // Selected visible pass overlay.
+  useEffect(() => {
+    const p = predictorRef.current;
+    if (!viewer || !p) return;
+    if (selectedPass && observerLocation) {
+      const sat = satById.get(selectedPass.noradId);
+      if (sat) {
+        p.showPass(selectedPass, sat, observerLocation);
+        viewer.clock.currentTime = JulianDate.fromIso8601(selectedPass.riseTime);
+        viewer.clock.shouldAnimate = true;
+      }
+    } else {
+      p.clear();
+    }
+  }, [viewer, selectedPass, observerLocation, satById]);
+
+  // Pick an observer location on the globe.
+  useEffect(() => {
+    if (!viewer || !pickingObserver) return;
+    const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+    handler.setInputAction((movement: ScreenSpaceEventHandler.PositionedEvent) => {
+      const cartesian = viewer.camera.pickEllipsoid(
+        movement.position,
+        viewer.scene.globe.ellipsoid,
+      );
+      if (cartesian) {
+        const carto = Cartographic.fromCartesian(cartesian);
+        setObserverLocation({
+          latDeg: CesiumMath.toDegrees(carto.latitude),
+          lonDeg: CesiumMath.toDegrees(carto.longitude),
+          heightKm: 0,
+        });
+        setPickingObserver(false);
+      }
+    }, ScreenSpaceEventType.LEFT_CLICK);
+    return () => handler.destroy();
+  }, [viewer, pickingObserver, setObserverLocation, setPickingObserver]);
 
   // Conjunction theater: build it once the viewer is ready.
   useEffect(() => {

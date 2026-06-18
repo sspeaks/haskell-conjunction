@@ -8,6 +8,7 @@ module SpaceTrack.Database
   , insertRun
   , runMigrations
   , upsertGpRecord
+  , upsertObjectBrightness
   , withDatabase
   ) where
 
@@ -24,6 +25,7 @@ import Database.PostgreSQL.Simple
   , close
   , connectPostgreSQL
   , execute
+  , executeMany
   , execute_
   , query
   , query_
@@ -31,6 +33,7 @@ import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.ToField (Action, ToField (toField))
 import Database.PostgreSQL.Simple.ToRow (ToRow (toRow))
 import SpaceTrack.Config (Config (..), trimSecret)
+import SpaceTrack.Satcat (SatcatBrightness (..))
 import SpaceTrack.Types (GpRecord (..), JsonValue (..))
 
 withDatabase :: Config -> (Connection -> IO a) -> IO a
@@ -56,6 +59,7 @@ connectionInfo Config {..} =
 runMigrations :: Connection -> IO ()
 runMigrations conn = do
   _ <- execute_ conn createIngestionRuns
+  _ <- execute_ conn createObjectBrightness
   _ <- execute_ conn createCurrentTable
   traverse_ (execute_ conn) indexes
 
@@ -119,6 +123,11 @@ upsertGpRecord :: Connection -> Int64 -> GpRecord -> IO Int64
 upsertGpRecord conn runId record =
   execute conn upsertCurrent (DbGpRecord runId record)
 
+upsertObjectBrightness :: Connection -> [SatcatBrightness] -> IO Int64
+upsertObjectBrightness _ [] = pure 0
+upsertObjectBrightness conn rows =
+  executeMany conn upsertBrightness (map DbSatcatBrightness rows)
+
 deactivateMissing :: Connection -> Int64 -> IO Int64
 deactivateMissing conn runId =
   execute
@@ -130,6 +139,8 @@ data DbGpRecord = DbGpRecord
   { dbRunId :: !Int64
   , dbRecord :: !GpRecord
   }
+
+newtype DbSatcatBrightness = DbSatcatBrightness SatcatBrightness
 
 instance ToRow DbGpRecord where
   toRow DbGpRecord {dbRunId, dbRecord = GpRecord {..}} =
@@ -162,6 +173,22 @@ instance ToRow DbGpRecord where
 
 jsonField :: JsonValue -> Action
 jsonField (JsonValue value) = toField (LBS.toStrict value)
+
+instance ToRow DbSatcatBrightness where
+  toRow (DbSatcatBrightness SatcatBrightness {..}) =
+    [ toField sbNoradId
+    , toField sbRcsM2
+    ]
+
+upsertBrightness :: Query
+upsertBrightness =
+  "INSERT INTO object_brightness (\
+  \ norad_cat_id, rcs_m2\
+  \) VALUES (\
+  \ ?, ?\
+  \) ON CONFLICT (norad_cat_id) DO UPDATE SET\
+  \ rcs_m2 = EXCLUDED.rcs_m2,\
+  \ updated_at = now()"
 
 upsertCurrent :: Query
 upsertCurrent =
@@ -222,6 +249,16 @@ createIngestionRuns =
   \ records_changed BIGINT,\
   \ records_deactivated BIGINT,\
   \ error_message TEXT\
+  \)"
+
+createObjectBrightness :: Query
+createObjectBrightness =
+  "CREATE TABLE IF NOT EXISTS object_brightness (\
+  \ norad_cat_id BIGINT PRIMARY KEY,\
+  \ rcs_m2 DOUBLE PRECISION,\
+  \ rcs_size TEXT,\
+  \ source TEXT NOT NULL DEFAULT 'celestrak-satcat',\
+  \ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()\
   \)"
 
 createCurrentTable :: Query

@@ -15,7 +15,9 @@ ingest/screener write to.
 ## API endpoints
 
 - `GET /api/health` — liveness
-- `GET /api/satellites` — every active catalog object with TLE lines + parsed elements
+- `GET /api/satellites` — every active catalog object with TLE lines + parsed
+  elements, plus brightness fields (`rcsM2`, `rcsSize`, `stdMag`) joined from the
+  CelesTrak SATCAT and used by the visibility predictor
 - `GET /api/conjunctions?limit=N&date=YYYY-MM-DD` — events, closest miss first
 - `GET /api/conjunctions/:id` — one event
 - `GET /api/runs` — recent screening runs
@@ -150,9 +152,10 @@ reaches `127.0.0.1:8080` while the public listens on 80/443.
 
 ## Configuration
 
-**API flags:** `--port`, `--static-dir`, `--allowed-origin` (CORS origin for the
-dev server), `--database-url`, `--database-url-file`, `--database-host`,
-`--database-name`, `--database-user`.
+**API flags:** `--port`, `--static-dir`, `--database-url`, `--database-url-file`,
+`--database-host`, `--database-name`, `--database-user`. The API is read-only and
+allows any origin (CORS `Access-Control-Allow-Origin: *`), so the Vite dev server
+can call it cross-origin with no extra configuration.
 
 **Frontend env** (`web/.env`, see `web/.env.example`):
 - `VITE_CESIUM_ION_TOKEN` — optional; enables Cesium ion terrain/imagery. Omit to
@@ -177,6 +180,17 @@ dev server), `--database-url`, `--database-url-file`, `--database-host`,
 - **Analytics drawer**: miss-distance histogram, relative-speed-vs-miss risk
   scatter (click a point to open it in the theater), conjunctions-by-altitude
   shell, and a most-involved-objects leaderboard.
+- **Visible from your location**: enter a latitude/longitude (or use browser
+  geolocation, or click the globe) to predict which satellites and conjunction
+  events are observable with the naked eye over the next N hours. A Web Worker
+  applies the standard visual-visibility tests — above the horizon (≥10°),
+  observer in darkness (sun below −6°), and satellite sunlit (Earth-shadow test)
+  — and ranks passes by estimated apparent magnitude. Selecting a pass draws the
+  above-horizon arc, an observer marker, and the peak line of sight, and jumps
+  the clock to the pass. Brightness is estimated from a resolved standard
+  magnitude (CelesTrak SATCAT RCS + a hardcoded bright-object table such as
+  ISS / CSS / Hubble); thresholds (window, min elevation, sun depression, magnitude
+  cutoff) are adjustable in the panel.
 
 ## Notes
 
@@ -188,17 +202,20 @@ dev server), `--database-url`, `--database-url-file`, `--database-host`,
 
 ## Troubleshooting
 
-**Assets return `400 Bad Request` in the browser (but `curl` works).** This is a
-request-header size limit. Browsers send the entire `localhost` cookie jar with
-every request, and cookies are shared across *all* `localhost` ports — so cookies
-set by other local dev servers (e.g. a Vite dev server on `:5173`) are also sent
-to the API. A large jar can exceed the HTTP-server header cap and Warp rejects the
-request with 400. The server raises the cap to 1 MB to avoid this; if you still
-hit it, clear cookies for `localhost` (DevTools → Application → Storage → Clear
-site data) or use an Incognito window.
+**Assets return `400 Bad Request` in the browser (but `curl` works).** Vite tags
+the built `<script>`/`<link>` with `crossorigin`, so browsers fetch those assets
+in CORS mode with an `Origin` header. If the server's CORS policy does not allow
+that origin it rejects the request with 400 — and because `curl` sends no
+`Origin`, it never reproduces. The server now allows any origin
+(`Access-Control-Allow-Origin: *`), which fixes this; make sure you are running a
+build that includes that change (`nixos-rebuild switch`, then hard-refresh once).
 
 **A redeploy doesn't seem to take effect.** Hashed `/assets/*` files are served
 `immutable`, but `index.html` is served `no-cache` so new asset hashes are always
 picked up. If you previously ran a build that cached `index.html` aggressively,
 hard-refresh once (Ctrl+Shift+R) or clear site data.
+
+The server also raises Warp's max request-header length to 1 MB so a large shared
+`localhost` cookie jar (cookies are shared across all `localhost` ports) cannot
+trip the default header cap.
 

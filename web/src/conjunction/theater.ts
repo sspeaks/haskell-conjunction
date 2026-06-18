@@ -12,6 +12,8 @@ import {
   LabelStyle,
   PolylineGlowMaterialProperty,
   PositionProperty,
+  TimeInterval,
+  Transforms,
   Viewer,
 } from "cesium";
 import type { Conjunction, Geo, ObjectState, Satellite } from "../api/types";
@@ -49,6 +51,10 @@ export class ConjunctionTheater {
     const tca = JulianDate.fromIso8601(conj.tca);
     const start = JulianDate.addSeconds(tca, -WINDOW_SEC, new JulianDate());
     const stop = JulianDate.addSeconds(tca, WINDOW_SEC, new JulianDate());
+    // Preload ICRF<->Fixed orientation for the encounter window so inertial-frame
+    // orbit trails rotate with the best available accuracy (Cesium falls back to a
+    // TEME pseudo-fixed rotation until this resolves).
+    void Transforms.preloadIcrfFixed(new TimeInterval({ start, stop })).catch(() => {});
 
     const clock = this.viewer.clock;
     clock.startTime = start.clone();

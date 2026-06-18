@@ -36,12 +36,13 @@ listSatellites :: Connection -> IO [SatelliteRow]
 listSatellites conn =
   query_
     conn
-    "SELECT norad_cat_id, object_name, object_type, tle_line1, tle_line2,\
-    \ inclination_deg, raan_deg, eccentricity, mean_motion, period_min,\
-    \ apoapsis_km, periapsis_km, semimajor_axis_km\
-    \ FROM leo_gp_current\
-    \ WHERE active = true AND tle_line1 IS NOT NULL AND tle_line2 IS NOT NULL\
-    \ ORDER BY norad_cat_id ASC"
+    "SELECT lgp.norad_cat_id, lgp.object_name, lgp.object_type, lgp.tle_line1, lgp.tle_line2,\
+    \ lgp.inclination_deg, lgp.raan_deg, lgp.eccentricity, lgp.mean_motion, lgp.period_min,\
+    \ lgp.apoapsis_km, lgp.periapsis_km, lgp.semimajor_axis_km, ob.rcs_m2, ob.rcs_size\
+    \ FROM leo_gp_current lgp\
+    \ LEFT JOIN object_brightness ob ON ob.norad_cat_id = lgp.norad_cat_id\
+    \ WHERE lgp.active = true AND lgp.tle_line1 IS NOT NULL AND lgp.tle_line2 IS NOT NULL\
+    \ ORDER BY lgp.norad_cat_id ASC"
 
 -- | The column list shared by every conjunction query.
 selectConjunctions :: Query

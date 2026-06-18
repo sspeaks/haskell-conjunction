@@ -4,7 +4,7 @@ module SpaceTrack.App (main) where
 
 import Control.Exception (Exception, SomeException, throwIO, try)
 import Data.Int (Int64)
-import Database.PostgreSQL.Simple (withTransaction)
+import Database.PostgreSQL.Simple (Connection, withTransaction)
 import SpaceTrack.Client (fetchCurrentLeoGp)
 import SpaceTrack.Config (Config (..), parseConfig)
 import SpaceTrack.Database
@@ -13,9 +13,11 @@ import SpaceTrack.Database
   , hasSuccessfulRunToday
   , insertRun
   , runMigrations
+  , upsertObjectBrightness
   , upsertGpRecord
   , withDatabase
   )
+import SpaceTrack.Satcat (fetchSatcatBrightness)
 import SpaceTrack.Types (GpRecord)
 
 data IngestError
@@ -64,7 +66,8 @@ persistCatalog config records =
       Left err -> do
         completeRun conn runId "failed" (length records) 0 0 (Just (show (err :: SomeException)))
         throwIO err
-      Right (changed, deactivated) ->
+      Right (changed, deactivated) -> do
+        refreshObjectBrightness conn
         putStrLn (summary runId records changed deactivated)
 
 summary :: Int64 -> [GpRecord] -> Int64 -> Int64 -> String
@@ -78,3 +81,14 @@ summary runId records changed deactivated =
     <> " rows, deactivated "
     <> show deactivated
     <> " rows"
+
+refreshObjectBrightness :: Connection -> IO ()
+refreshObjectBrightness conn = do
+  result <- try $ do
+    brightness <- fetchSatcatBrightness
+    upsertObjectBrightness conn brightness
+  case result of
+    Left err ->
+      putStrLn ("warning: failed to refresh object brightness: " <> show (err :: SomeException))
+    Right changed ->
+      putStrLn ("refreshed object brightness, changed " <> show changed <> " rows")

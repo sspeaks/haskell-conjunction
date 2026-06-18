@@ -3,12 +3,16 @@ import CesiumGlobe from "./components/CesiumGlobe";
 import Sidebar from "./components/Sidebar";
 import InfoPanel from "./components/InfoPanel";
 import ConjunctionList from "./components/ConjunctionList";
+import VisibilityPanel from "./components/VisibilityPanel";
 import EncounterInset from "./components/EncounterInset";
 import Analytics from "./components/Analytics";
 import { useStore } from "./state/store";
+import { useVisibility } from "./state/useVisibility";
 import { fetchConjunctions, fetchRuns, fetchSatellites } from "./api/client";
 
 export default function App() {
+  useVisibility();
+
   const setData = useStore((s) => s.setData);
   const setLoading = useStore((s) => s.setLoading);
   const setError = useStore((s) => s.setError);
@@ -38,6 +42,7 @@ export default function App() {
       <CesiumGlobe />
       <Sidebar />
       <ConjunctionList />
+      <VisibilityPanel />
       <InfoPanel />
       <EncounterInset />
       <Analytics />
