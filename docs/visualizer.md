@@ -185,3 +185,20 @@ dev server), `--database-url`, `--database-url-file`, `--database-host`,
   nominal miss point rather than a probability ellipse.
 - CesiumJS itself is ~5 MB (loaded once); the satellite catalog payload is
   gzip-compressed (~3 MB over the wire).
+
+## Troubleshooting
+
+**Assets return `400 Bad Request` in the browser (but `curl` works).** This is a
+request-header size limit. Browsers send the entire `localhost` cookie jar with
+every request, and cookies are shared across *all* `localhost` ports — so cookies
+set by other local dev servers (e.g. a Vite dev server on `:5173`) are also sent
+to the API. A large jar can exceed the HTTP-server header cap and Warp rejects the
+request with 400. The server raises the cap to 1 MB to avoid this; if you still
+hit it, clear cookies for `localhost` (DevTools → Application → Storage → Clear
+site data) or use an Incognito window.
+
+**A redeploy doesn't seem to take effect.** Hashed `/assets/*` files are served
+`immutable`, but `index.html` is served `no-cache` so new asset hashes are always
+picked up. If you previously ran a build that cached `index.html` aggressively,
+hard-refresh once (Ctrl+Shift+R) or clear site data.
+

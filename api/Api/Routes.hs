@@ -43,9 +43,10 @@ import Web.Scotty
   )
 
 -- | Build the complete WAI application: API routes, CORS, and static files.
--- Non-@\/api@ paths are served from the built frontend directory, with
--- @index.html@ as the index document and a single-page-app fallback so client
--- routes resolve to @index.html@.
+-- Non-@\/api@ paths are served from the built frontend directory. The hashed
+-- @\/assets\/*@ files keep an immutable long-lived cache, while @index.html@
+-- (the root and the single-page-app fallback) is served @no-cache@ so a new
+-- deploy's asset hashes are always picked up.
 buildApp :: Config -> MVar Connection -> IO Application
 buildApp cfg connVar = do
   apiApp <- scottyApp (routes connVar)
@@ -53,21 +54,29 @@ buildApp cfg connVar = do
       staticSettings =
         (defaultWebAppSettings dir)
           { ssIndices = [unsafeToPiece "index.html"]
-          , ss404Handler = Just (indexFallback dir)
+          , ss404Handler = Just (serveIndex dir)
           }
       combined req respond =
         case pathInfo req of
           ("api" : _) -> apiApp req respond
+          -- Serve index.html for the root ourselves so it is not cached
+          -- with the immutable header staticApp applies to hashed assets.
+          [] -> serveIndex dir req respond
+          ["index.html"] -> serveIndex dir req respond
           _ -> staticApp staticSettings req respond
   pure (gzip defaultGzipSettings (corsMiddleware cfg combined))
 
--- | Serve @index.html@ for any unmatched, non-asset path (SPA fallback).
-indexFallback :: FilePath -> Application
-indexFallback dir _req respond =
+-- | Serve @index.html@ with a @no-cache@ header. Used for the root and as the
+-- single-page-app fallback for unmatched client routes, so the browser always
+-- revalidates the entry document and never pins a stale asset reference.
+serveIndex :: FilePath -> Application
+serveIndex dir _req respond =
   respond $
     responseFile
       status200
-      [("Content-Type", "text/html; charset=utf-8")]
+      [ ("Content-Type", "text/html; charset=utf-8")
+      , ("Cache-Control", "no-cache")
+      ]
       (dir </> "index.html")
       Nothing
 
