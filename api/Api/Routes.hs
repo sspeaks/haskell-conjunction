@@ -14,7 +14,6 @@ import Api.Database (getConjunction, listConjunctions, listRuns, listSatellites)
 import Control.Concurrent.MVar (MVar, withMVar)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (object, (.=))
-import qualified Data.ByteString.Char8 as BS8
 import Data.Int (Int64)
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
@@ -64,7 +63,7 @@ buildApp cfg connVar = do
           [] -> serveIndex dir req respond
           ["index.html"] -> serveIndex dir req respond
           _ -> staticApp staticSettings req respond
-  pure (gzip defaultGzipSettings (corsMiddleware cfg combined))
+  pure (gzip defaultGzipSettings (corsMiddleware combined))
 
 -- | Serve @index.html@ with a @no-cache@ header. Used for the root and as the
 -- single-page-app fallback for unmatched client routes, so the browser always
@@ -80,14 +79,20 @@ serveIndex dir _req respond =
       (dir </> "index.html")
       Nothing
 
--- | Allow the configured dev-server origin to call the API.
-corsMiddleware :: Config -> Application -> Application
-corsMiddleware cfg = cors (const (Just policy))
+-- | CORS for a read-only, unauthenticated public API: allow any origin.
+--
+-- This also matters for serving the built frontend: Vite tags the bundled
+-- @\<script\>@ and @\<link\>@ with @crossorigin@, so browsers fetch those
+-- assets in CORS mode with an @Origin@ header. A policy restricted to a single
+-- origin would reject the app's own origin with @400@, so we allow all origins
+-- (which emits @Access-Control-Allow-Origin: *@). The API exposes no
+-- credentials or secrets, so this is safe.
+corsMiddleware :: Application -> Application
+corsMiddleware = cors (const (Just policy))
   where
     policy =
       simpleCorsResourcePolicy
-        { corsOrigins = Just ([BS8.pack (cfgAllowedOrigin cfg)], False)
-        , corsMethods = ["GET", "OPTIONS"]
+        { corsMethods = ["GET", "OPTIONS"]
         , corsRequestHeaders = ["Content-Type", "Accept"]
         }
 

@@ -41,8 +41,6 @@ data Config = Config
   -- ^ TCP port the HTTP server binds to.
   , cfgStaticDir :: !FilePath
   -- ^ Directory of the built frontend served for non-@/api@ paths.
-  , cfgAllowedOrigin :: !String
-  -- ^ Origin permitted by CORS (the Vite dev server in development).
   , cfgDatabaseUrl :: !(Maybe String)
   -- ^ Full libpq connection string, taking precedence over host/name/user.
   , cfgDatabaseUrlFile :: !(Maybe FilePath)
@@ -77,14 +75,6 @@ configParser = do
           <> value "web/dist"
           <> showDefault
           <> help "Directory of the built frontend to serve"
-      )
-  cfgAllowedOrigin <-
-    strOption
-      ( long "allowed-origin"
-          <> metavar "URL"
-          <> value "http://localhost:5173"
-          <> showDefault
-          <> help "Origin allowed by CORS (the Vite dev server)"
       )
   cfgDatabaseUrl <-
     optional
