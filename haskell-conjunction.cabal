@@ -14,6 +14,7 @@ extra-doc-files:
     docs/conjunction-screening.md
     docs/space-acronyms.md
     docs/spacetrack-leo-ingest.md
+    docs/visualizer.md
     NOTICE
 extra-source-files:
     bench/direct_sgp4_bench.cpp
@@ -117,6 +118,35 @@ executable conjunction-screen
         text >=2.0 && <2.2,
         time >=1.12 && <1.15
     hs-source-dirs:   conjunction
+    ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
+    default-language: GHC2024
+
+executable conjunction-api
+    import:           warnings
+    main-is:          Main.hs
+    other-modules:
+        Api.Config
+        Api.Database
+        Api.Routes
+        Api.Types
+    build-depends:
+        aeson >=2.1 && <2.3,
+        base ^>=4.20.2.0,
+        bytestring >=0.11 && <0.13,
+        filepath >=1.4 && <1.6,
+        haskell-conjunction,
+        http-types >=0.12 && <0.13,
+        optparse-applicative >=0.18 && <0.20,
+        postgresql-simple >=0.6 && <0.8,
+        scotty >=0.22 && <0.23,
+        text >=2.0 && <2.2,
+        time >=1.12 && <1.15,
+        wai >=3.2 && <3.3,
+        wai-app-static >=3.1 && <3.2,
+        wai-cors >=0.2 && <0.3,
+        wai-extra >=3.1 && <3.2,
+        warp >=3.3 && <3.5
+    hs-source-dirs:   api
     ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
     default-language: GHC2024
 

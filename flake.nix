@@ -9,6 +9,7 @@
         let
           pkgs = import nixpkgs { inherit system; };
           package = import ./default.nix { inherit pkgs; };
+          web = import ./nix/web.nix { inherit pkgs; };
           devShell = import ./shell.nix { inherit pkgs; };
           postgresGui = pkgs.writeShellApplication {
             name = "postgregui";
@@ -40,6 +41,8 @@
             default = package;
             spacetrack-leo-ingest = package;
             conjunction-screen = package;
+            conjunction-api = package;
+            conjunction-web = web;
             postgregui = postgresGui;
             postgres-gui = postgresGui;
           };
@@ -55,6 +58,10 @@
             conjunction-screen = {
               type = "app";
               program = "${package}/bin/conjunction-screen";
+            };
+            conjunction-api = {
+              type = "app";
+              program = "${package}/bin/conjunction-api";
             };
             postgregui = {
               type = "app";

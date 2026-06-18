@@ -9,6 +9,9 @@ let
     self.packages.${pkgs.stdenv.hostPlatform.system}.spacetrack-leo-ingest
       or self.packages.${pkgs.stdenv.hostPlatform.system}.default;
 
+  webForSystem =
+    self.packages.${pkgs.stdenv.hostPlatform.system}.conjunction-web;
+
   databaseArgs =
     if cfg.database.local.enable then [
       "--database-host"
@@ -50,6 +53,13 @@ let
   conjunctionArgs = [ "--mode" cfg.conjunction.mode ] ++ databaseArgs ++ cfg.conjunction.extraArgs;
 
   guardedConjunctionArgs = conjunctionArgs ++ [ "--skip-if-computed-today" ];
+
+  apiArgs = [
+    "--port"
+    (toString cfg.api.port)
+    "--static-dir"
+    (toString cfg.api.webRoot)
+  ] ++ databaseArgs ++ cfg.api.extraArgs;
 
   conjunctionRtsArgs =
     optionals (cfg.conjunction.rtsOptions != [ ]) ([ "+RTS" ] ++ cfg.conjunction.rtsOptions ++ [ "-RTS" ]);
@@ -255,6 +265,40 @@ in
         Set to @[ ]@ to pass no RTS options.
       '';
     };
+
+    api.enable = mkEnableOption "conjunction visualization API and web server";
+
+    api.package = mkOption {
+      type = types.package;
+      default = cfg.package;
+      defaultText = "config.services.spacetrack-leo-ingest.package";
+      description = "Package providing the conjunction-api executable.";
+    };
+
+    api.webRoot = mkOption {
+      type = types.path;
+      default = webForSystem;
+      defaultText = "self.packages.<system>.conjunction-web";
+      description = "Directory of built frontend assets served by the API (the conjunction-web package by default).";
+    };
+
+    api.port = mkOption {
+      type = types.port;
+      default = 8080;
+      description = "TCP port the visualization server listens on (binds all interfaces).";
+    };
+
+    api.openFirewall = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Open the API port in the firewall. Leave false when fronting the service with a reverse proxy.";
+    };
+
+    api.extraArgs = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Additional command-line arguments passed to conjunction-api (for example --allowed-origin).";
+    };
   };
 
   config = mkIf cfg.enable {
@@ -345,5 +389,21 @@ in
         OnCalendar = cfg.catchUp.onCalendar;
       };
     };
+
+    systemd.services.conjunction-api = mkIf cfg.api.enable {
+      description = "Conjunction visualization API and web server";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" ] ++ optional cfg.database.local.enable "postgresql.service";
+      requires = optional cfg.database.local.enable "postgresql.service";
+      serviceConfig = serviceConfig // {
+        Type = "simple";
+        ExecStart = "${cfg.api.package}/bin/conjunction-api ${lib.escapeShellArgs apiArgs}";
+        Restart = "on-failure";
+        RestartSec = 5;
+      };
+    };
+
+    networking.firewall.allowedTCPPorts =
+      optional (cfg.api.enable && cfg.api.openFirewall) cfg.api.port;
   };
 }
