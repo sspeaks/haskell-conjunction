@@ -217,7 +217,12 @@ function SceneContent() {
       theater.show(selectedConjunction, satById);
     } else {
       theater.clear();
-      theater.resetClock();
+      // Only restore the default clock when nothing else owns it. A selected
+      // pass owns the clock (its overlay effect jumps to riseTime), and because
+      // selecting a pass clears the conjunction, both effects re-run in the same
+      // commit; resetting here would stomp the pass's clock on a
+      // conjunction → pass transition.
+      if (!useStore.getState().selectedPass) theater.resetClock();
     }
   }, [selectedConjunction, satById]);
 
