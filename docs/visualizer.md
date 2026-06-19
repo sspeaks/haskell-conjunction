@@ -185,7 +185,11 @@ can call it cross-origin with no extra configuration.
   events are observable with the naked eye over the next N hours. A Web Worker
   applies the standard visual-visibility tests — above the horizon (≥10°),
   observer in darkness (sun below −6°), and satellite sunlit (Earth-shadow test)
-  — and ranks passes by estimated apparent magnitude. Selecting a pass draws the
+  — and ranks passes by estimated apparent magnitude. Each pass row shows the
+  satellite name, an optional `naked-eye` badge, and a number to its right: the
+  estimated peak (brightest) apparent visual magnitude during the pass, to one
+  decimal place (lower = brighter); the `naked-eye` badge appears only when that
+  magnitude is ≤ 4. Selecting a pass draws the
   above-horizon arc, an observer marker, and the peak line of sight, and jumps
   the clock to the pass. Brightness is estimated from a resolved standard
   magnitude (CelesTrak SATCAT RCS + a hardcoded bright-object table such as
