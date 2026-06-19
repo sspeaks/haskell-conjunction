@@ -55,7 +55,7 @@ function SceneContent() {
   const setObserverLocation = useStore((s) => s.setObserverLocation);
   const setPickingObserver = useStore((s) => s.setPickingObserver);
 
-  // Configure the clock once when the viewer is ready (24h window, 60x).
+  // Configure the clock once when the viewer is ready (24h window, 1x).
   useEffect(() => {
     if (!viewer) return;
     const start = JulianDate.now();
@@ -66,7 +66,7 @@ function SceneContent() {
     clock.currentTime = start.clone();
     clock.clockRange = ClockRange.LOOP_STOP;
     clock.clockStep = ClockStep.SYSTEM_CLOCK_MULTIPLIER;
-    clock.multiplier = 60;
+    clock.multiplier = 1;
     clock.shouldAnimate = true;
     viewer.timeline?.zoomTo(start, stop);
   }, [viewer]);
