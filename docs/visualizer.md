@@ -18,7 +18,9 @@ ingest/screener write to.
 - `GET /api/satellites` — every active catalog object with TLE lines + parsed
   elements, plus brightness fields (`rcsM2`, `rcsSize`, `stdMag`) joined from the
   CelesTrak SATCAT and used by the visibility predictor
-- `GET /api/conjunctions?limit=N&date=YYYY-MM-DD` — events, closest miss first
+- `GET /api/conjunctions?limit=N&date=YYYY-MM-DD` — events from the latest
+  successful run (or the latest successful run for `date` when supplied), closest
+  miss first
 - `GET /api/conjunctions/:id` — one event
 - `GET /api/runs` — recent screening runs
 
