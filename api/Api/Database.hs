@@ -56,18 +56,26 @@ selectConjunctions =
   \ mid_lat_deg, mid_lon_deg, mid_alt_km\
   \ FROM conjunctions"
 
--- | Conjunctions ordered by miss distance (closest first), optionally filtered
--- to a single screening date, capped at @limit@.
+-- | Conjunctions of the latest successful screening run, ordered by miss
+-- distance (closest first), capped at @limit@. When a @screen_date@ is given,
+-- scopes to the latest successful run for that date instead. Scoping to a single
+-- run keeps each physical conjunction from appearing once per stored run.
 listConjunctions :: Connection -> Maybe Day -> Int -> IO [ConjunctionRow]
 listConjunctions conn Nothing lim =
   query
     conn
-    (selectConjunctions <> " ORDER BY miss_distance_km ASC LIMIT ?")
+    ( selectConjunctions
+        <> " WHERE run_id = (SELECT max(run_id) FROM conjunction_runs WHERE status = 'success')\
+           \ ORDER BY miss_distance_km ASC LIMIT ?"
+    )
     (Only lim)
 listConjunctions conn (Just day) lim =
   query
     conn
-    (selectConjunctions <> " WHERE screen_date = ? ORDER BY miss_distance_km ASC LIMIT ?")
+    ( selectConjunctions
+        <> " WHERE run_id = (SELECT max(run_id) FROM conjunction_runs WHERE status = 'success' AND screen_date = ?)\
+           \ ORDER BY miss_distance_km ASC LIMIT ?"
+    )
     (day, lim)
 
 -- | A single conjunction by its primary key.
