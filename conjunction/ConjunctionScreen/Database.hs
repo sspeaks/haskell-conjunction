@@ -65,6 +65,9 @@ runMigrations conn = do
   _ <- execute_ conn createConjunctionRuns
   _ <- execute_ conn createConjunctions
   traverse_ (execute_ conn) indexes
+  _ <- execute_ conn dropOldConjunctionsPairUnique
+  _ <- execute_ conn addConjunctionsRunPairTcaUnique
+  pure ()
 
 -- | Read every active catalog object that carries a usable TLE.
 --
@@ -218,7 +221,7 @@ insertConjunction =
   \ ?, ?, ?, ?, ?, ?,\
   \ ?, ?, ?,\
   \ ?, ?, ?\
-  \) ON CONFLICT (run_id, norad_cat_id_a, norad_cat_id_b) DO NOTHING"
+  \) ON CONFLICT (run_id, norad_cat_id_a, norad_cat_id_b, tca) DO NOTHING"
 
 createConjunctionRuns :: Query
 createConjunctionRuns =
@@ -273,8 +276,29 @@ createConjunctions =
   \ mid_lon_deg DOUBLE PRECISION NOT NULL,\
   \ mid_alt_km DOUBLE PRECISION NOT NULL,\
   \ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\
-  \ UNIQUE (run_id, norad_cat_id_a, norad_cat_id_b)\
+  \ CONSTRAINT conjunctions_run_pair_tca_key UNIQUE (run_id, norad_cat_id_a, norad_cat_id_b, tca)\
   \)"
+
+dropOldConjunctionsPairUnique :: Query
+dropOldConjunctionsPairUnique =
+  "ALTER TABLE conjunctions DROP CONSTRAINT IF EXISTS conjunctions_run_id_norad_cat_id_a_norad_cat_id_b_key"
+
+addConjunctionsRunPairTcaUnique :: Query
+addConjunctionsRunPairTcaUnique =
+  "DO $$\
+  \ BEGIN\
+  \   IF NOT EXISTS (\
+  \     SELECT 1\
+  \     FROM pg_constraint\
+  \     WHERE conrelid = 'conjunctions'::regclass\
+  \       AND conname = 'conjunctions_run_pair_tca_key'\
+  \   ) THEN\
+  \     ALTER TABLE conjunctions\
+  \       ADD CONSTRAINT conjunctions_run_pair_tca_key\
+  \       UNIQUE (run_id, norad_cat_id_a, norad_cat_id_b, tca);\
+  \   END IF;\
+  \ END\
+  \ $$;"
 
 indexes :: [Query]
 indexes =

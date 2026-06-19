@@ -207,20 +207,26 @@ tileStepCount cfg totalSteps =
     Nothing -> max 1 totalSteps
     Just hours -> max 1 (min totalSteps (floor (hours * 3600.0 / scStepSeconds cfg)))
 
--- | Fold one tile's per-step candidate samples into a running minimum-distance
--- map, keyed by pair and carrying @(minDistance, absoluteStep)@.
+data CandidateRun = CandidateRun
+  { crCompleted :: ![Int]
+  , crMinDistance :: !Double
+  , crMinStep :: !Int
+  , crLastStep :: !Int
+  }
+
+-- | Fold one tile's per-step candidate samples into per-pair close-approach runs.
 --
 -- Each batch of per-step lists (sized to the capability count) is forced in
 -- parallel and folded into the accumulator in step order, then discarded before
--- the next batch, so only one batch plus the running map is live at once. The
--- in-order fold with the same minimum-distance tie-break makes the result
--- identical to a single left fold over every sample, so tiling and parallelism
--- never change the retained bracket steps.
+-- the next batch, so only one batch plus the running map is live at once. For
+-- each pair, contiguous samples inside the coarse gate form one run; only that
+-- run's minimum-distance bracket step is retained. A gap closes the old run and
+-- opens a new one, allowing multiple distinct approaches for the same pair.
 foldStepBatches ::
   Int ->
-  Map.Map (Int, Int) (Double, Int) ->
+  Map.Map (Int, Int) CandidateRun ->
   [[((Int, Int), Double, Int)]] ->
-  IO (Map.Map (Int, Int) (Double, Int))
+  IO (Map.Map (Int, Int) CandidateRun)
 foldStepBatches cap = go
  where
   go !acc [] = pure acc
@@ -229,15 +235,29 @@ foldStepBatches cap = go
     forced <- mapConcurrently (evaluate . force) batch
     let !acc' = foldl' (foldl' ins) acc forced
     go acc' more
-  ins m (pair, dist, step) = Map.insertWith keepMin pair (dist, step) m
-  keepMin new old = if fst new < fst old then new else old
+  ins m (pair, dist, step) = Map.alter (Just . maybe (openRun [] dist step) (addSample dist step)) pair m
+  openRun completed dist step = CandidateRun completed dist step step
+  addSample dist step run
+    | step == crLastStep run =
+        updateRunMin dist step run
+    | step == crLastStep run + 1 =
+        (updateRunMin dist step run) {crLastStep = step}
+    | step > crLastStep run + 1 =
+        openRun (crMinStep run : crCompleted run) dist step
+    | otherwise = run
+  updateRunMin dist step run
+    | dist < crMinDistance run = run {crMinDistance = dist, crMinStep = step}
+    | otherwise = run
+
+finalizeRun :: CandidateRun -> [Int]
+finalizeRun run = reverse (crMinStep run : crCompleted run)
 
 -- | Screen the window tile by tile, accumulating one global candidate map.
 --
 -- Tiles partition the coarse grid contiguously, so every step is screened
--- exactly once; the global map keeps each pair's minimum-separation bracket
--- across all tiles. Only the current tile's propagation columns are resident,
--- which bounds peak memory independently of the window length.
+-- exactly once; the global map keeps each pair's in-progress run and completed
+-- bracket steps across all tiles. Only the current tile's propagation columns
+-- are resident, which bounds peak memory independently of the window length.
 screenTiles ::
   (ScreenConfig -> Prepared -> [[((Int, Int), Double, Int)]]) ->
   ScreenConfig ->
@@ -245,11 +265,11 @@ screenTiles ::
   Array Int SplitJD ->
   Int ->
   [(Int, Int)] ->
-  IO (Map.Map (Int, Int) Int)
+  IO (Map.Map (Int, Int) [Int])
 screenTiles generate cfg objArr epochArr numTiles tiles = do
   capabilities <- getNumCapabilities
   acc <- go (max 1 capabilities) Map.empty (zip [1 :: Int ..] tiles)
-  pure (Map.map snd acc)
+  pure (Map.map finalizeRun acc)
  where
   go _ !acc [] = pure acc
   go cap !acc ((ti, (stepOffset, stepCount)) : rest) = do
@@ -276,9 +296,9 @@ refineBatchSize capabilities = max 1 capabilities * 5000
 -- Both objects are re-propagated at the fine refinement step across the bracket
 -- window; the minimum-distance fine sample becomes the reported approach. Only
 -- approaches within the final threshold are emitted.
-refineCandidates :: ScreenConfig -> Prepared -> Map.Map (Int, Int) Int -> IO [ConjunctionEvent]
+refineCandidates :: ScreenConfig -> Prepared -> Map.Map (Int, Int) [Int] -> IO [ConjunctionEvent]
 refineCandidates cfg prep cands = do
-  let pairs = Map.toList cands
+  let pairs = [((i, j), k) | ((i, j), ks) <- Map.toList cands, k <- ks]
   counter <- newCounter "refine" (length pairs)
   capabilities <- getNumCapabilities
   events <- refineBatches counter (refineBatchSize capabilities) pairs []
@@ -478,7 +498,8 @@ screenWith generate cfg objs = do
         tileSteps
     )
   cands <- withPhase "candidates" (screenTiles generate cfg objArr epochArr numTiles tiles)
-  logInfo (printf "candidates: %d bracket pairs to refine" (Map.size cands))
+  let bracketCount = sum (map length (Map.elems cands))
+  logInfo (printf "candidates: %d bracket(s) across %d pair(s) to refine" bracketCount (Map.size cands))
   let refineCtx =
         Prepared
           { prepObjects = objArr

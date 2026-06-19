@@ -27,8 +27,9 @@ import Conjunction.Types
   , defaultScreenConfig
   )
 import Control.Monad (unless)
-import Data.List (find, sort)
-import Data.Time (UTCTime (UTCTime), fromGregorian)
+import Data.List (find, minimumBy, sort)
+import Data.Ord (comparing)
+import Data.Time (UTCTime (UTCTime), diffUTCTime, fromGregorian)
 import SGP4 (TLE (..))
 import System.Exit (exitFailure)
 import Text.Printf (printf)
@@ -43,6 +44,8 @@ main = do
   runTest "expected event set is exactly produced" testExactEventSet
   runTest "tiled screen matches whole-window screen" testTilingMatchesWhole
   runTest "empty and singleton catalogs yield no events" testDegenerateCatalogs
+  runTest "real close approach regression is reported" testRealCloseApproachRegression
+  runTest "multiple approaches per pair are reported" testMultipleApproachesPerPair
 
 -- Fixtures ------------------------------------------------------------------
 
@@ -70,6 +73,48 @@ issNudgedTle = TLE issLine1 issLine2Nudged
 issHigherTle :: TLE
 issHigherTle = TLE issLine1 issLine2Higher
 
+realCloseLine1A :: String
+realCloseLine1A = "1 54352U 22151CX  26168.42577862  .00097518  00000-0  31591-2 0  9995"
+
+realCloseLine2A :: String
+realCloseLine2A = "2 54352  99.0277 336.2112 0045531 221.4394 138.3386 15.30609204120506"
+
+realCloseLine1B :: String
+realCloseLine1B = "1 58171U 23166X   26168.11187061 -.00003087  00000-0 -92239-4 0  9997"
+
+realCloseLine2B :: String
+realCloseLine2B = "2 58171  53.1587 117.6340 0001884  48.5853 311.5309 15.30163613148407"
+
+realCloseEntries :: [(Int, Maybe String, TLE)]
+realCloseEntries =
+  [ (54352, Just "CZ-6A DEB", TLE realCloseLine1A realCloseLine2A)
+  , (58171, Just "STARLINK-30752", TLE realCloseLine1B realCloseLine2B)
+  ]
+
+realCloseConfig :: ScreenConfig
+realCloseConfig =
+  (defaultScreenConfig (UTCTime (fromGregorian 2026 6 18) 0))
+    { scStepSeconds = 10
+    }
+
+-- | Same orbit as the ISS fixture except for a 5-degree inclination offset.
+-- The larger offset keeps the two node crossings as separate coarse-gate runs.
+issLine2Inclined :: String
+issLine2Inclined = "2 25544  56.6416 247.4627 0006703 130.5360 325.0288 15.72125391563537"
+
+multiApproachEntries :: [(Int, Maybe String, TLE)]
+multiApproachEntries =
+  [ (25544, Just "ISS-A", issTle)
+  , (25545, Just "ISS-INCLINED", TLE issLine1 issLine2Inclined)
+  ]
+
+multiApproachConfig :: ScreenConfig
+multiApproachConfig =
+  (defaultScreenConfig (UTCTime (fromGregorian 2008 9 20) (12 * 3600)))
+    { scWindowHours = 1.6
+    , scStepSeconds = 10
+    }
+
 -- | NORAD ids chosen so the ISS cluster (1xx) and the raised orbit (2xx) sort
 -- into clearly separate groups.
 fixtureEntries :: [(Int, Maybe String, TLE)]
@@ -92,6 +137,13 @@ loadFixture = do
   (objects, errors) <- initCatalog fixtureEntries
   unless (null errors) $
     failTest ("fixture TLEs failed to initialize: " <> show errors)
+  pure objects
+
+loadCatalog :: String -> [(Int, Maybe String, TLE)] -> IO [CatalogObject]
+loadCatalog label entries = do
+  (objects, errors) <- initCatalog entries
+  unless (null errors) $
+    failTest (label <> " TLEs failed to initialize: " <> show errors)
   pure objects
 
 -- Tests ---------------------------------------------------------------------
@@ -187,16 +239,80 @@ testDegenerateCatalogs = do
   let validation = compareRuns singletonRaw singletonOptimized
   unless (vrAgree validation) (failTest "singleton runs should trivially agree")
 
+testRealCloseApproachRegression :: IO ()
+testRealCloseApproachRegression = do
+  objects <- loadCatalog "real close approach" realCloseEntries
+  rawEvents <- screenRaw realCloseConfig objects
+  optimizedEvents <- screenOptimized realCloseConfig objects
+  let rawPairEvents = eventsForPair rawEvents (54352, 58171)
+      optimizedPairEvents = eventsForPair optimizedEvents (54352, 58171)
+  assertBool "raw screen should report the real close approach" (not (null rawPairEvents))
+  assertBool "optimized screen should report the real close approach" (not (null optimizedPairEvents))
+  let closest = minimumBy (comparing ceMissDistanceKm) optimizedPairEvents
+      expectedTca = UTCTime (fromGregorian 2026 6 18) (55 * 60 + 5)
+      tcaErrorSeconds = abs (realToFrac (diffUTCTime (ceTca closest) expectedTca) :: Double)
+  assertBool
+    ("real close approach miss distance should be < 0.2 km, got " <> show (ceMissDistanceKm closest))
+    (ceMissDistanceKm closest < 0.2)
+  assertBool
+    ("real close approach TCA should be within 60 seconds of 2026-06-18 00:55:05, got " <> show (ceTca closest))
+    (tcaErrorSeconds <= 60)
+  result <- screenValidate realCloseConfig objects
+  assertValidationAgree "real close approach" result
+
+testMultipleApproachesPerPair :: IO ()
+testMultipleApproachesPerPair = do
+  objects <- loadCatalog "multi-approach" multiApproachEntries
+  rawEvents <- screenRaw multiApproachConfig objects
+  optimizedEvents <- screenOptimized multiApproachConfig objects
+  let rawPairEvents = eventsForPair rawEvents (25544, 25545)
+      optimizedPairEvents = eventsForPair optimizedEvents (25544, 25545)
+      sortedTcas = sort (map ceTca optimizedPairEvents)
+      tcaGapsSeconds =
+        [ realToFrac (diffUTCTime later earlier) :: Double
+        | (earlier, later) <- zip sortedTcas (drop 1 sortedTcas)
+        ]
+  assertBool
+    ("raw screen should report at least two approaches, got " <> show (length rawPairEvents))
+    (length rawPairEvents >= 2)
+  assertBool
+    ("optimized screen should report at least two approaches, got " <> show (length optimizedPairEvents))
+    (length optimizedPairEvents >= 2)
+  assertBool
+    ("all optimized approaches should be under 5 km, got " <> show (map ceMissDistanceKm optimizedPairEvents))
+    (all ((< 5.0) . ceMissDistanceKm) optimizedPairEvents)
+  assertBool
+    ("approach TCAs should be distinct, got " <> show sortedTcas)
+    (not (null tcaGapsSeconds) && all (> 60) tcaGapsSeconds)
+  result <- screenValidate multiApproachConfig objects
+  assertValidationAgree "multi-approach" result
+
 -- Helpers -------------------------------------------------------------------
 
 pairKey :: ConjunctionEvent -> (Int, Int)
 pairKey event = (osNoradId (ceObjectA event), osNoradId (ceObjectB event))
+
+eventsForPair :: [ConjunctionEvent] -> (Int, Int) -> [ConjunctionEvent]
+eventsForPair events key = filter ((== key) . pairKey) events
 
 expectEvent :: [ConjunctionEvent] -> (Int, Int) -> IO ConjunctionEvent
 expectEvent events key =
   case find ((== key) . pairKey) events of
     Just event -> pure event
     Nothing -> failTest ("expected an event for pair " <> show key)
+
+assertValidationAgree :: String -> ValidationResult -> IO ()
+assertValidationAgree label result =
+  unless (vrAgree result) $
+    failTest
+      ( label
+          <> " raw and optimized disagree: onlyRaw="
+          <> show (vrOnlyRaw result)
+          <> " onlyOptimized="
+          <> show (vrOnlyOptimized result)
+          <> " maxMissDiffKm="
+          <> show (vrMaxMissDiffKm result)
+      )
 
 runTest :: String -> IO () -> IO ()
 runTest name action = do

@@ -18,6 +18,9 @@ import Conjunction.Types
   )
 import Data.List (sort)
 import qualified Data.Map.Strict as Map
+import Data.Time (UTCTime)
+
+type EventKey = (Int, Int, UTCTime)
 
 -- | Screen with the raw all-pairs CM-COMBO algorithm.
 screenRaw :: ScreenConfig -> [CatalogObject] -> IO [ConjunctionEvent]
@@ -32,14 +35,14 @@ data ValidationResult = ValidationResult
   { vrRaw :: ![ConjunctionEvent]
   , vrOptimized :: ![ConjunctionEvent]
   , vrAgree :: !Bool
-  -- ^ True when both algorithms detect the same pairs with matching miss
+  -- ^ True when both algorithms detect the same pair/TCAs with matching miss
   -- distances.
-  , vrOnlyRaw :: ![(Int, Int)]
-  -- ^ NORAD id pairs detected only by the raw algorithm.
-  , vrOnlyOptimized :: ![(Int, Int)]
-  -- ^ NORAD id pairs detected only by the optimized algorithm.
+  , vrOnlyRaw :: ![EventKey]
+  -- ^ NORAD id pair/TCAs detected only by the raw algorithm.
+  , vrOnlyOptimized :: ![EventKey]
+  -- ^ NORAD id pair/TCAs detected only by the optimized algorithm.
   , vrMaxMissDiffKm :: !Double
-  -- ^ Largest miss-distance disagreement across shared pairs.
+  -- ^ Largest miss-distance disagreement across shared pair/TCAs.
   }
   deriving (Eq, Show)
 
@@ -50,7 +53,7 @@ screenValidate cfg objs = do
   optimizedEvents <- screenOptimized cfg objs
   pure (compareRuns rawEvents optimizedEvents)
 
--- | Compare two event lists by pair membership and miss distance.
+-- | Compare two event lists by pair/TCA membership and miss distance.
 compareRuns :: [ConjunctionEvent] -> [ConjunctionEvent] -> ValidationResult
 compareRuns rawEvents optimizedEvents =
   ValidationResult
@@ -70,10 +73,13 @@ compareRuns rawEvents optimizedEvents =
   maxMissDiff = if Map.null shared then 0.0 else maximum (Map.elems shared)
   missTolerance = 1.0e-6
 
-eventMap :: [ConjunctionEvent] -> Map.Map (Int, Int) Double
+eventMap :: [ConjunctionEvent] -> Map.Map EventKey Double
 eventMap = Map.fromList . map entry
  where
   entry event =
-    ( (osNoradId (ceObjectA event), osNoradId (ceObjectB event))
+    ( ( osNoradId (ceObjectA event)
+      , osNoradId (ceObjectB event)
+      , ceTca event
+      )
     , ceMissDistanceKm event
     )
