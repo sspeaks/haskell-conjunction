@@ -493,6 +493,7 @@ in
     systemd.services.spacetrack-leo-ingest =
       {
         description = "Fetch latest Space-Track LEO-crossing GP records";
+        restartIfChanged = false;
         wantedBy = [ ];
         inherit (serviceOrdering) after wants requires;
         script = "exec ${cfg.package}/bin/spacetrack-leo-ingest ${lib.escapeShellArgs commandArgs}";
@@ -501,6 +502,7 @@ in
 
     systemd.services.spacetrack-leo-ingest-if-needed = {
       description = "Fetch latest Space-Track LEO-crossing GP records if today has not run";
+      restartIfChanged = false;
       wantedBy = [ ];
       inherit (serviceOrdering) after requires;
       wants =
@@ -512,6 +514,7 @@ in
 
     systemd.services.spacetrack-conjunction-screen = mkIf cfg.conjunction.enable {
       description = "Screen the active LEO catalog for close approaches";
+      restartIfChanged = false;
       wantedBy = [ ];
       inherit (serviceOrdering) wants requires;
       after = serviceOrdering.after ++ [ "spacetrack-leo-ingest.service" ];
@@ -521,6 +524,7 @@ in
 
     systemd.services.spacetrack-conjunction-screen-if-needed = mkIf cfg.conjunction.enable {
       description = "Screen the active LEO catalog for close approaches if today has not run";
+      restartIfChanged = false;
       wantedBy = [ ];
       inherit (serviceOrdering) requires;
       wants =

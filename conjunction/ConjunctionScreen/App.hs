@@ -45,7 +45,7 @@ main = do
   config <- parseConfig
   now <- getCurrentTime
   let screenCfg = buildScreenConfig config now
-      screenDate = utctDay now
+      screenDate = utctDay (scStart screenCfg)
   skip <- shouldSkip config screenDate
   if skip
     then putStrLn "skipping; conjunctions already computed today"
