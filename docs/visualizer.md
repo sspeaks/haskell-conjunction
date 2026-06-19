@@ -159,7 +159,7 @@ can call it cross-origin with no extra configuration.
 
 **Frontend env** (`web/.env`, see `web/.env.example`):
 - `VITE_CESIUM_ION_TOKEN` — optional; enables Cesium ion terrain/imagery. Omit to
-  run token-free (flat ellipsoid + OpenStreetMap).
+  run token-free (flat ellipsoid + bundled Natural Earth II imagery).
 - `VITE_API_TARGET` — dev proxy target (default `http://localhost:8080`).
 - `VITE_MAX_SATS` — cap the number of satellites rendered (0 = whole catalog).
 

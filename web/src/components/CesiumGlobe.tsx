@@ -7,10 +7,11 @@ import {
   ImageryLayer,
   JulianDate,
   Math as CesiumMath,
-  OpenStreetMapImageryProvider,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
+  TileMapServiceImageryProvider,
   Viewer as CesiumViewer,
+  buildModuleUrl,
 } from "cesium";
 import { Viewer, useCesium } from "resium";
 import { useStore } from "../state/store";
@@ -22,11 +23,14 @@ import { InertialCamera } from "../cesium/InertialCamera";
 import { VisibilityPredictor } from "../cesium/VisibilityPredictor";
 import type { Regime } from "../cesium/regime";
 
-// Token-free providers: flat WGS84 ellipsoid + OpenStreetMap imagery.
-// Hoisted to module scope so Resium does not re-initialize on every render.
+// Token-free providers: flat WGS84 ellipsoid + bundled Natural Earth II imagery
+// (natural-color relief, no city/street/road labels). Hoisted to module scope so
+// Resium does not re-initialize on every render.
 const terrainProvider = new EllipsoidTerrainProvider();
-const baseLayer = new ImageryLayer(
-  new OpenStreetMapImageryProvider({ url: "https://tile.openstreetmap.org/" }),
+const baseLayer = ImageryLayer.fromProviderAsync(
+  TileMapServiceImageryProvider.fromUrl(
+    buildModuleUrl("Assets/Textures/NaturalEarthII"),
+  ),
 );
 
 // 0 (or unset) renders the whole catalog; set VITE_MAX_SATS to cap for perf.
@@ -55,7 +59,7 @@ function SceneContent() {
   const setObserverLocation = useStore((s) => s.setObserverLocation);
   const setPickingObserver = useStore((s) => s.setPickingObserver);
 
-  // Configure the clock once when the viewer is ready (24h window, 60x).
+  // Configure the clock once when the viewer is ready (24h window, 1x).
   useEffect(() => {
     if (!viewer) return;
     const start = JulianDate.now();
@@ -66,7 +70,7 @@ function SceneContent() {
     clock.currentTime = start.clone();
     clock.clockRange = ClockRange.LOOP_STOP;
     clock.clockStep = ClockStep.SYSTEM_CLOCK_MULTIPLIER;
-    clock.multiplier = 60;
+    clock.multiplier = 1;
     clock.shouldAnimate = true;
     viewer.timeline?.zoomTo(start, stop);
   }, [viewer]);

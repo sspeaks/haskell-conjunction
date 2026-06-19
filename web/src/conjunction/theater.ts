@@ -202,7 +202,7 @@ export class ConjunctionTheater {
     clock.stopTime = stop.clone();
     clock.currentTime = start.clone();
     clock.clockRange = ClockRange.LOOP_STOP;
-    clock.multiplier = 60;
+    clock.multiplier = 1;
     clock.shouldAnimate = true;
     this.viewer.timeline?.zoomTo(start, stop);
   }
