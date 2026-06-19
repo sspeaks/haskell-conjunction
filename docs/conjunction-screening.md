@@ -13,6 +13,11 @@ time-of-closest-approach refinement, so they produce identical results; this is
 asserted by the `conjunction-tests` suite. The algorithm survey that motivated
 this design is in [`what-papers-are-there-out-there-for-efficiently-co.md`](./what-papers-are-there-out-there-for-efficiently-co.md).
 
+The stored conjunctions can also drive phone notifications: see
+[`conjunction-notify.md`](./conjunction-notify.md) for the `conjunction-notify`
+executable, which alerts a configured observer (via ntfy) about the
+naked-eye-visible conjunctions coming up in the next-day window.
+
 ## Parallelism
 
 CM-COMBO is, in Healy's original paper, a parallel algorithm — the pairwise

@@ -5,6 +5,8 @@ let
   cfg = config.services.spacetrack-leo-ingest;
   inherit (lib) mkEnableOption mkIf mkOption optional optionalAttrs optionals types;
 
+  numberType = types.either types.int types.float;
+
   packageForSystem =
     self.packages.${pkgs.stdenv.hostPlatform.system}.spacetrack-leo-ingest
       or self.packages.${pkgs.stdenv.hostPlatform.system}.default;
@@ -60,6 +62,39 @@ let
     "--static-dir"
     (toString cfg.api.webRoot)
   ] ++ databaseArgs ++ cfg.api.extraArgs;
+
+  notifyArgs = [
+    "--observer-lat"
+    (toString cfg.notify.observer.latDeg)
+    "--observer-lon"
+    (toString cfg.notify.observer.lonDeg)
+    "--observer-height-km"
+    (toString cfg.notify.observer.heightKm)
+    "--window-hours"
+    (toString cfg.notify.windowHours)
+    "--min-elevation-deg"
+    (toString cfg.notify.minElevationDeg)
+    "--sun-max-elevation-deg=${toString cfg.notify.sunMaxElevationDeg}"
+    "--magnitude-cutoff"
+    (toString cfg.notify.magnitudeCutoff)
+    "--ntfy-server"
+    cfg.notify.ntfy.server
+    "--ntfy-topic"
+    (toString cfg.notify.ntfy.topic)
+    "--ntfy-title"
+    cfg.notify.ntfy.title
+    "--ntfy-tags"
+    cfg.notify.ntfy.tags
+  ] ++ optionals (cfg.notify.ntfy.tokenFile != null) [
+    "--ntfy-token-file"
+    cfg.notify.ntfy.tokenFile
+  ] ++ optionals (cfg.notify.ntfy.priority != null) [
+    "--ntfy-priority"
+    cfg.notify.ntfy.priority
+  ] ++ optionals (cfg.notify.watchLabel != null) [
+    "--watch-label"
+    cfg.notify.watchLabel
+  ] ++ databaseArgs ++ cfg.notify.extraArgs;
 
   conjunctionRtsArgs =
     optionals (cfg.conjunction.rtsOptions != [ ]) ([ "+RTS" ] ++ cfg.conjunction.rtsOptions ++ [ "-RTS" ]);
@@ -299,6 +334,116 @@ in
       default = [ ];
       description = "Additional command-line arguments passed to conjunction-api (for example --allowed-origin).";
     };
+
+    notify.enable = mkEnableOption "ntfy push notifications for naked-eye-visible conjunctions";
+
+    notify.observer.latDeg = mkOption {
+      type = types.nullOr numberType;
+      default = null;
+      description = "Observer WGS84 latitude in degrees (north positive). Required when notify.enable is set.";
+    };
+
+    notify.observer.lonDeg = mkOption {
+      type = types.nullOr numberType;
+      default = null;
+      description = "Observer WGS84 longitude in degrees (east positive). Required when notify.enable is set.";
+    };
+
+    notify.observer.heightKm = mkOption {
+      type = numberType;
+      default = 0.0;
+      description = "Observer height above the WGS84 ellipsoid in kilometers.";
+    };
+
+    notify.ntfy.server = mkOption {
+      type = types.str;
+      default = "https://ntfy.sh";
+      description = "Base URL of the ntfy server. Override for a self-hosted instance.";
+    };
+
+    notify.ntfy.topic = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "ntfy topic to publish to. Required when notify.enable is set. Subscribe to this topic on your phone.";
+    };
+
+    notify.ntfy.tokenFile = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "Path to a file containing an ntfy access token (sent as a Bearer token). Compatible with config.sops.secrets.<name>.path.";
+    };
+
+    notify.ntfy.priority = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "Optional ntfy message priority (max|high|default|low|min or 1-5).";
+    };
+
+    notify.ntfy.title = mkOption {
+      type = types.str;
+      default = "Visible satellite conjunction";
+      description = "Title applied to each ntfy notification.";
+    };
+
+    notify.ntfy.tags = mkOption {
+      type = types.str;
+      default = "telescope,satellite";
+      description = "Comma-separated ntfy tags or emoji shortcodes applied to each notification.";
+    };
+
+    notify.windowHours = mkOption {
+      type = numberType;
+      default = 24.0;
+      description = "Look-ahead horizon in hours for conjunctions to notify about.";
+    };
+
+    notify.minElevationDeg = mkOption {
+      type = numberType;
+      default = 10.0;
+      description = "Minimum peak elevation above the horizon for a conjunction to count as visible.";
+    };
+
+    notify.sunMaxElevationDeg = mkOption {
+      type = numberType;
+      default = -6.0;
+      description = "Observer is considered dark when the Sun is below this elevation.";
+    };
+
+    notify.magnitudeCutoff = mkOption {
+      type = numberType;
+      default = 6.5;
+      description = "Faintest apparent magnitude still worth a notification (larger numbers are fainter).";
+    };
+
+    notify.watchLabel = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "De-duplication key recorded per notification. Defaults to the ntfy topic.";
+    };
+
+    notify.onCalendar = mkOption {
+      type = types.str;
+      default = "hourly";
+      description = "Calendar schedule for the notification timer.";
+    };
+
+    notify.onBootSec = mkOption {
+      type = types.str;
+      default = "7min";
+      description = "Delay after boot before the first notification run.";
+    };
+
+    notify.randomizedDelaySec = mkOption {
+      type = types.str;
+      default = "2min";
+      description = "RandomizedDelaySec for the notification timer.";
+    };
+
+    notify.extraArgs = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Additional command-line arguments passed to conjunction-notify.";
+    };
   };
 
   config = mkIf cfg.enable {
@@ -314,6 +459,14 @@ in
       {
         assertion = cfg.database.local.enable || cfg.databaseUrl != null || cfg.databaseUrlFile != null;
         message = "Set database.local.enable = true or provide databaseUrl/databaseUrlFile.";
+      }
+      {
+        assertion = !cfg.notify.enable || cfg.notify.ntfy.topic != null;
+        message = "services.spacetrack-leo-ingest.notify.ntfy.topic must be set when notify.enable is true.";
+      }
+      {
+        assertion = !cfg.notify.enable || (cfg.notify.observer.latDeg != null && cfg.notify.observer.lonDeg != null);
+        message = "services.spacetrack-leo-ingest.notify.observer.latDeg and lonDeg must be set when notify.enable is true.";
       }
     ];
 
@@ -373,10 +526,41 @@ in
       description = "Screen the active LEO catalog for close approaches if today has not run";
       restartIfChanged = false;
       wantedBy = [ ];
-      inherit (serviceOrdering) wants requires;
+      inherit (serviceOrdering) requires;
+      wants =
+        serviceOrdering.wants
+        ++ optional cfg.notify.enable "spacetrack-conjunction-notify.service";
       after = serviceOrdering.after ++ [ "spacetrack-leo-ingest-if-needed.service" ];
       script = "exec ${cfg.package}/bin/conjunction-screen ${lib.escapeShellArgs (guardedConjunctionArgs ++ conjunctionRtsArgs)}";
       serviceConfig = serviceConfig;
+    };
+
+    systemd.services.spacetrack-conjunction-notify = mkIf cfg.notify.enable {
+      description = "Notify about naked-eye-visible conjunctions via ntfy";
+      wantedBy = [ ];
+      inherit (serviceOrdering) wants requires;
+      after =
+        serviceOrdering.after
+        ++ [
+          "spacetrack-conjunction-screen.service"
+          "spacetrack-conjunction-screen-if-needed.service"
+        ];
+      script = "exec ${cfg.package}/bin/conjunction-notify ${lib.escapeShellArgs notifyArgs}";
+      serviceConfig = serviceConfig;
+    };
+
+    systemd.timers.spacetrack-conjunction-notify = mkIf cfg.notify.enable {
+      description = "Periodically notify about naked-eye-visible conjunctions";
+      wantedBy = [ "timers.target" ];
+      after = optional cfg.database.local.enable "postgresql.service";
+      requires = optional cfg.database.local.enable "postgresql.service";
+      timerConfig = {
+        Unit = "spacetrack-conjunction-notify.service";
+        OnBootSec = cfg.notify.onBootSec;
+        OnCalendar = cfg.notify.onCalendar;
+        RandomizedDelaySec = cfg.notify.randomizedDelaySec;
+        Persistent = true;
+      };
     };
 
     systemd.timers.spacetrack-leo-ingest-catch-up = mkIf cfg.catchUp.enable {
