@@ -35,12 +35,15 @@ export default function VisibilityPanel() {
   const visibilityOptions = useStore((s) => s.visibilityOptions);
   const visiblePasses = useStore((s) => s.visiblePasses);
   const visibleConjunctions = useStore((s) => s.visibleConjunctions);
+  const conjunctions = useStore((s) => s.conjunctions);
   const selectedPass = useStore((s) => s.selectedPass);
+  const selectedConjunction = useStore((s) => s.selectedConjunction);
   const visibilityLoading = useStore((s) => s.visibilityLoading);
   const pickingObserver = useStore((s) => s.pickingObserver);
   const setObserverLocation = useStore((s) => s.setObserverLocation);
   const setVisibilityOptions = useStore((s) => s.setVisibilityOptions);
   const selectPass = useStore((s) => s.selectPass);
+  const selectConjunction = useStore((s) => s.selectConjunction);
   const setPickingObserver = useStore((s) => s.setPickingObserver);
 
   const [lat, setLat] = useState(observerLocation?.latDeg.toString() ?? "");
@@ -259,17 +262,31 @@ export default function VisibilityPanel() {
         <section className="visibility-conjunctions">
           <h3>Visible conjunctions</h3>
           <ul>
-            {visibleConjunctions.map((conjunction) => (
-              <li key={conjunction.conjunctionId}>
-                <span className="visibility-pair">
-                  {conjunction.aName ?? `#${conjunction.aNoradId}`}{" "}
-                  <span className="x">×</span> {conjunction.bName ?? `#${conjunction.bNoradId}`}
-                </span>
-                <span>{formatMiss(conjunction.missDistanceKm)}</span>
-                <span>{conjunction.peakElevationDeg.toFixed(0)}°</span>
-                <span>mag {conjunction.peakMagnitude.toFixed(1)}</span>
-              </li>
-            ))}
+            {visibleConjunctions.map((conjunction) => {
+              const isSelected = selectedConjunction?.id === conjunction.conjunctionId;
+              return (
+                <li
+                  key={conjunction.conjunctionId}
+                  className={isSelected ? "selected" : ""}
+                  onClick={() => {
+                    if (isSelected) {
+                      selectConjunction(null);
+                      return;
+                    }
+                    const found = conjunctions.find((c) => c.id === conjunction.conjunctionId);
+                    if (found) selectConjunction(found);
+                  }}
+                >
+                  <span className="visibility-pair">
+                    {conjunction.aName ?? `#${conjunction.aNoradId}`}{" "}
+                    <span className="x">×</span> {conjunction.bName ?? `#${conjunction.bNoradId}`}
+                  </span>
+                  <span>{formatMiss(conjunction.missDistanceKm)}</span>
+                  <span>{conjunction.peakElevationDeg.toFixed(0)}°</span>
+                  <span>mag {conjunction.peakMagnitude.toFixed(1)}</span>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}
