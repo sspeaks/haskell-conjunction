@@ -21,11 +21,11 @@ const SHELL_GEOMETRY: Record<ShellName, { inner: number; outer: number }> = {
   },
   MEO: {
     inner: EARTH_RADIUS_METERS + 2_000_000,
-    outer: EARTH_RADIUS_METERS + 35_786_000,
+    outer: EARTH_RADIUS_METERS + 34_000_000,
   },
   GEO: {
-    inner: EARTH_RADIUS_METERS + 35_600_000,
-    outer: EARTH_RADIUS_METERS + 35_900_000,
+    inner: EARTH_RADIUS_METERS + 34_000_000,
+    outer: EARTH_RADIUS_METERS + 37_000_000,
   },
 };
 
