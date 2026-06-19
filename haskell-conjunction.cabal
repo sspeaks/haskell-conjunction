@@ -11,6 +11,7 @@ maintainer:         sspeaks610@gmail.com
 build-type:         Simple
 extra-doc-files:
     CHANGELOG.md
+    docs/conjunction-notify.md
     docs/conjunction-screening.md
     docs/space-acronyms.md
     docs/spacetrack-leo-ingest.md
@@ -35,6 +36,7 @@ library
         Conjunction.Catalog
         Conjunction.CMCombo
         Conjunction.Grid
+        Conjunction.Visibility
         Conjunction.Parallel
         Conjunction.Progress
         Conjunction.Run
@@ -154,6 +156,31 @@ executable conjunction-api
     ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
     default-language: GHC2024
 
+executable conjunction-notify
+    import:           warnings
+    main-is:          Main.hs
+    other-modules:
+        ConjunctionNotify.App
+        ConjunctionNotify.Config
+        ConjunctionNotify.Database
+        ConjunctionNotify.Ntfy
+    build-depends:
+        base ^>=4.20.2.0,
+        bytestring >=0.11 && <0.13,
+        containers >=0.6 && <0.8,
+        haskell-conjunction,
+        http-client >=0.7 && <0.8,
+        http-client-tls >=0.3 && <0.4,
+        http-types >=0.12 && <0.13,
+        linear >=1.22 && <1.24,
+        optparse-applicative >=0.18 && <0.20,
+        postgresql-simple >=0.6 && <0.8,
+        text >=2.0 && <2.2,
+        time >=1.12 && <1.15
+    hs-source-dirs:   notify
+    ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
+    default-language: GHC2024
+
 test-suite sgp4-tests
     import:           warnings
     type:             exitcode-stdio-1.0
@@ -185,6 +212,18 @@ test-suite conjunction-tests
         time >=1.12 && <1.15
     hs-source-dirs:   test
     ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
+    default-language: GHC2024
+
+test-suite visibility-tests
+    import:           warnings
+    type:             exitcode-stdio-1.0
+    main-is:          TestVisibility.hs
+    build-depends:
+        base ^>=4.20.2.0,
+        haskell-conjunction,
+        linear >=1.22 && <1.24,
+        time >=1.12 && <1.15
+    hs-source-dirs:   test
     default-language: GHC2024
 
 benchmark sgp4-hs-bench
