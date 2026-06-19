@@ -1,5 +1,6 @@
 import {
   ArcType,
+  BoundingSphere,
   CallbackPositionProperty,
   CallbackProperty,
   Cartesian2,
@@ -8,6 +9,7 @@ import {
   Color,
   ConstantPositionProperty,
   Entity,
+  HeadingPitchRange,
   JulianDate,
   LabelStyle,
   PolylineGlowMaterialProperty,
@@ -119,11 +121,13 @@ export class ConjunctionTheater {
       }),
     );
 
-    // Frame the encounter from above the midpoint.
-    this.viewer.camera.flyTo({
-      destination: geoToCartesian(conj.midpoint.lat, conj.midpoint.lon, conj.midpoint.altKm + 1200),
+    // Frame the encounter centered on the midpoint. Target-centered framing keeps
+    // the crossing point at screen center regardless of pitch and aspect ratio; the
+    // oblique tilt is supplied via the offset rather than by aiming away from the target.
+    const sphere = new BoundingSphere(geoOf(conj.midpoint), 1);
+    this.viewer.camera.flyToBoundingSphere(sphere, {
       duration: 1.8,
-      orientation: { heading: 0, pitch: -Math.PI / 2.4, roll: 0 },
+      offset: new HeadingPitchRange(0, -Math.PI / 2.4, 1_200_000),
     });
 
     this.installSlowMo(tca);
@@ -202,7 +206,7 @@ export class ConjunctionTheater {
     clock.stopTime = stop.clone();
     clock.currentTime = start.clone();
     clock.clockRange = ClockRange.LOOP_STOP;
-    clock.multiplier = 60;
+    clock.multiplier = 1;
     clock.shouldAnimate = true;
     this.viewer.timeline?.zoomTo(start, stop);
   }
