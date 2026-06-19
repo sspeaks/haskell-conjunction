@@ -473,6 +473,16 @@ geoAt tm pos =
         ecefToGeodetic (temeToEcef siderealTime (TEMEPosition pos))
    in GeoPoint (lat * 180.0 / pi) (lon * 180.0 / pi) alt
 
+-- | Keep an event only when its relative speed at closest approach is at or
+-- above the configured floor.
+--
+-- A floor of @0.0@ keeps every event (an exact no-op, since relative speed is
+-- always non-negative); a positive floor drops near-zero-relative-speed
+-- co-orbital/co-located pairs, which share an orbit and so have no single
+-- physically meaningful time of closest approach.
+keepEvent :: ScreenConfig -> ConjunctionEvent -> Bool
+keepEvent cfg event = ceRelativeSpeedKms event >= scMinRelativeSpeedKms cfg
+
 -- | Run a screen given a candidate generator.
 screenWith ::
   (ScreenConfig -> Prepared -> [[((Int, Int), Double, Int)]]) ->
@@ -510,7 +520,17 @@ screenWith generate cfg objs = do
           , prepCount = n
           , prepSteps = totalSteps
           }
-  refineCandidates cfg refineCtx cands
+  events <- refineCandidates cfg refineCtx cands
+  let kept = filter (keepEvent cfg) events
+      minRelSpeed = scMinRelativeSpeedKms cfg
+  when (minRelSpeed > 0) $
+    logInfo
+      ( printf
+          "suppressed %d co-orbital event(s) below %g km/s relative speed"
+          (length events - length kept)
+          minRelSpeed
+      )
+  pure kept
 
 v3X :: V3 Double -> Double
 v3X (V3 x _ _) = x

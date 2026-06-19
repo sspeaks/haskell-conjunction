@@ -19,3 +19,10 @@
   `conjunction_notifications` de-duplication table and NixOS service/timer wiring.
   The visibility math (`Conjunction.Visibility`) mirrors the web client's, so the
   notified events also appear in the existing "Visible conjunctions" list.
+* Suppress co-orbital / co-located pairs (near-zero relative speed) in the
+  `conjunction-screen` production path via the new `--min-relative-speed-kms`
+  floor (default `0.1` km/s; `0` disables). Such pairs share an orbit and have no
+  single meaningful time of closest approach, so the screen previously emitted
+  spurious approaches pinned to the window start (UTC midnight). The screening
+  library leaves the floor disabled by default; suppression only removes rows, so
+  no schema or consumer changes are required.

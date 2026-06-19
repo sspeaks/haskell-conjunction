@@ -46,6 +46,9 @@ main = do
   runTest "empty and singleton catalogs yield no events" testDegenerateCatalogs
   runTest "real close approach regression is reported" testRealCloseApproachRegression
   runTest "multiple approaches per pair are reported" testMultipleApproachesPerPair
+  runTest "co-orbital pairs are suppressed under the relative-speed floor" testCoorbitalSuppressed
+  runTest "genuine crossing survives the relative-speed floor" testGenuineCrossingNotSuppressed
+  runTest "co-orbital suppression is independent of window start" testSuppressionWindowIndependent
 
 -- Fixtures ------------------------------------------------------------------
 
@@ -286,6 +289,64 @@ testMultipleApproachesPerPair = do
     (not (null tcaGapsSeconds) && all (> 60) tcaGapsSeconds)
   result <- screenValidate multiApproachConfig objects
   assertValidationAgree "multi-approach" result
+
+-- | Co-orbital / co-located pairs (near-zero relative speed) are dropped once
+-- the relative-speed floor is enabled. Every pair in the ISS fixture cluster
+-- shares an orbit, so with the floor active no event survives, and the raw and
+-- optimized screens still agree on the (empty) result. This guards against the
+-- window-start-pinned "midnight TCA" artifact, which only afflicts these
+-- persistently-close pairs.
+testCoorbitalSuppressed :: IO ()
+testCoorbitalSuppressed = do
+  objects <- loadFixture
+  result <- screenValidate (fixtureConfig {scMinRelativeSpeedKms = 0.1}) objects
+  assertValidationAgree "co-orbital suppression" result
+  unless (null (vrOptimized result) && null (vrRaw result)) $
+    failTest
+      ( "co-orbital pairs should be suppressed under the relative-speed floor, got optimized="
+          <> show (map pairKey (vrOptimized result))
+          <> " raw="
+          <> show (map pairKey (vrRaw result))
+      )
+
+-- | A genuine crossing-orbit conjunction (well above the floor) is retained when
+-- the floor is enabled, guarding against over-suppression of real approaches.
+testGenuineCrossingNotSuppressed :: IO ()
+testGenuineCrossingNotSuppressed = do
+  objects <- loadCatalog "real close approach" realCloseEntries
+  events <- screenOptimized (realCloseConfig {scMinRelativeSpeedKms = 0.1}) objects
+  let pairEvents = eventsForPair events (54352, 58171)
+  assertBool
+    "genuine crossing conjunction should survive the relative-speed floor"
+    (not (null pairEvents))
+  assertBool
+    ( "genuine crossing relative speed should exceed the floor, got "
+        <> show (map ceRelativeSpeedKms pairEvents)
+    )
+    (all ((>= 0.1) . ceRelativeSpeedKms) pairEvents)
+
+-- | With the floor enabled, the co-orbital cluster yields no events regardless
+-- of where the screening window starts. Screening the same geometry over more
+-- than two orbits at both the midnight boundary and a +6h start shows the
+-- reported approaches no longer track the window start (the root-cause artifact).
+testSuppressionWindowIndependent :: IO ()
+testSuppressionWindowIndependent = do
+  objects <- loadFixture
+  let baseCfg = fixtureConfig {scWindowHours = 3.5, scMinRelativeSpeedKms = 0.1}
+      midnightCfg = baseCfg {scStart = UTCTime (fromGregorian 2008 9 21) 0}
+      shiftedCfg = baseCfg {scStart = UTCTime (fromGregorian 2008 9 21) (6 * 3600)}
+  midnightEvents <- screenOptimized midnightCfg objects
+  shiftedEvents <- screenOptimized shiftedCfg objects
+  unless (null midnightEvents) $
+    failTest
+      ( "co-orbital events should be suppressed at the midnight window start, got "
+          <> show (map eventSummary midnightEvents)
+      )
+  unless (null shiftedEvents) $
+    failTest
+      ( "co-orbital events should be suppressed at the +6h window start, got "
+          <> show (map eventSummary shiftedEvents)
+      )
 
 -- Helpers -------------------------------------------------------------------
 

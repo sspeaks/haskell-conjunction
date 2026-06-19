@@ -52,6 +52,7 @@ data Config = Config
   , cfgCoarseThresholdKm :: !(Maybe Double)
   , cfgRelVelMaxKms :: !Double
   , cfgRefineStepSeconds :: !Double
+  , cfgMinRelativeSpeedKms :: !Double
   , cfgTileHours :: !(Maybe Double)
   , cfgMode :: !ScreenMode
   , cfgValidateLimit :: !Int
@@ -165,6 +166,17 @@ configParser = do
           <> value 1.0
           <> showDefault
           <> help "Fine step used to refine each candidate's time of closest approach."
+      )
+  cfgMinRelativeSpeedKms <-
+    option
+      auto
+      ( long "min-relative-speed-kms"
+          <> metavar "KM_S"
+          <> value 0.1
+          <> showDefault
+          <> help
+            "Suppress co-orbital/co-located pairs whose relative speed at closest\
+            \ approach is below this floor (km/s); 0 disables."
       )
   cfgTileHours <-
     optional $

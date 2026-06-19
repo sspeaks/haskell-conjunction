@@ -46,6 +46,12 @@ data ScreenConfig = ScreenConfig
   -- catalogs. 'Nothing' screens the whole window in a single tile (the original
   -- behavior). Tiling never changes the detected conjunctions: every coarse step
   -- is still screened exactly once and the global per-pair minimum is retained.
+  , scMinRelativeSpeedKms :: !Double
+  -- ^ Relative-speed floor in kilometers per second. Events whose relative speed
+  -- at the time of closest approach is below this value are suppressed as
+  -- co-orbital/co-located proximities, which share an orbit and so have no single
+  -- physically meaningful time of closest approach. A floor of @0.0@ disables the
+  -- filter (an exact no-op, since relative speed is always non-negative).
   }
   deriving (Eq, Show)
 
@@ -64,6 +70,7 @@ defaultScreenConfig start =
     , scRelVelMaxKms = 15.6
     , scRefineStepSeconds = 1.0
     , scTileHours = Nothing
+    , scMinRelativeSpeedKms = 0.0
     }
 
 -- | A catalog entry to be screened.
