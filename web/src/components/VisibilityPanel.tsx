@@ -225,8 +225,21 @@ export default function VisibilityPanel() {
                 >
                   <div className="visibility-pass-head">
                     <span className="visibility-object">{pass.name ?? `#${pass.noradId}`}</span>
-                    {pass.peakMagnitude <= 4 && <span className="visibility-badge">naked-eye</span>}
-                    <span className="visibility-mag">{pass.peakMagnitude.toFixed(1)}</span>
+                    {pass.peakMagnitude <= 4 && (
+                      <span
+                        className="visibility-badge"
+                        title="Bright enough to see with the unaided eye (peak apparent magnitude ≤ 4)"
+                      >
+                        naked-eye
+                      </span>
+                    )}
+                    <span
+                      className="visibility-mag"
+                      title="Estimated peak apparent visual magnitude during this pass (lower = brighter)"
+                      aria-label={`Peak apparent magnitude ${pass.peakMagnitude.toFixed(1)} (lower is brighter)`}
+                    >
+                      {pass.peakMagnitude.toFixed(1)}
+                    </span>
                   </div>
                   <div className="visibility-pass-meta">
                     <span>{timeRange(pass.riseTime, pass.setTime)}</span>
