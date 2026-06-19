@@ -88,6 +88,7 @@ buildScreenConfig config now =
     , scRelVelMaxKms = cfgRelVelMaxKms config
     , scRefineStepSeconds = cfgRefineStepSeconds config
     , scTileHours = Just (fromMaybe defaultTileHours (cfgTileHours config))
+    , scMinRelativeSpeedKms = cfgMinRelativeSpeedKms config
     }
 
 -- | Default tile length when @--tile-hours@ is not supplied. One hour keeps the

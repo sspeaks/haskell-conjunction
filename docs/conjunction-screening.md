@@ -72,8 +72,41 @@ available core by default; override with `+RTS -Nk`.
    (default 1 s) across the bracket window; the minimum-distance fine sample
    gives the true time of closest approach, miss distance, and relative
    velocity. Only approaches within the final threshold are emitted.
-6. **Persist.** A `conjunction_runs` row records the run and its parameters; the
+6. **Co-orbital suppression** (production default). Pairs whose relative speed at
+   closest approach is below `--min-relative-speed-kms` (default 0.1 km/s) are
+   dropped. Co-orbital / co-located objects share an orbit and have no single
+   physically meaningful time of closest approach, so the engine would otherwise
+   report a spurious approach pinned to the window start. The screening library
+   leaves the floor off by default; the `conjunction-screen` binary enables it.
+   See [Co-orbital suppression](#co-orbital-suppression) below.
+7. **Persist.** A `conjunction_runs` row records the run and its parameters; the
    surviving events are written to `conjunctions`.
+
+## Co-orbital suppression
+
+Co-orbital / co-located object pairs — constellation members sharing a plane,
+formation flyers, a freshly separated payload and rocket body, or fragments from
+a common breakup — stay within the screening threshold continuously and share
+orbital phase, so they have no single, physically meaningful time of closest
+approach. The refinement step would otherwise report one "conjunction" per such
+pair whose TCA is pinned to the first sample after the window start; because the
+production window starts at UTC midnight, these spurious events all bunch on the
+"day border."
+
+These pairs are reliably distinguished by their **relative speed** at closest
+approach: co-orbital pairs sit at a few millimetres-to-metres per second
+(empirically ~1e-4 .. 4e-3 km/s), whereas genuine crossing-orbit conjunctions
+are several km/s. The screen therefore drops any event whose relative speed is
+below `--min-relative-speed-kms` (default `0.1` km/s, comfortably inside the gap
+between the two classes). Pass `--min-relative-speed-kms 0` to disable the filter
+and report these proximities again.
+
+The screening **library** defaults the floor to `0` (disabled) so the
+raw-vs-optimized agreement fixtures — which deliberately include co-orbital ISS
+duplicates — keep exercising the full pipeline; the production
+`conjunction-screen` binary enables the floor. Suppression only removes rows: the
+`tca` and `relative_speed_kms` semantics for the conjunctions that remain are
+unchanged, so the API, web, and notify consumers need no changes.
 
 ## Modes
 
@@ -128,6 +161,8 @@ Key options (see `conjunction-screen --help` for the full list):
 - `--window-hours` (default `24`), `--step-seconds` (default `60`)
 - `--threshold-km` (default `5`), `--coarse-threshold-km` (default derived)
 - `--rel-vel-max-kms` (default `15.6`), `--refine-step-seconds` (default `1`)
+- `--min-relative-speed-kms` (default `0.1`; `0` disables) — suppress co-orbital
+  pairs whose relative speed at closest approach is below this floor
 - `--mode optimized|raw|validate`, `--validate-limit`
 - `--skip-if-computed-today` for scheduled jobs
 - the same database connection options as `spacetrack-leo-ingest`
@@ -152,12 +187,16 @@ services.spacetrack-leo-ingest = {
 };
 ```
 
-Set `conjunction.enable = false` to disable automatic screening.
+Set `conjunction.enable = false` to disable automatic screening. Pass screening
+overrides such as `--min-relative-speed-kms 0` (to report co-orbital pairs again)
+through `conjunction.extraArgs`.
 
 ## Validation
 
 `cabal test conjunction-tests` builds fixtures from the canonical ISS test TLE
 and asserts that the raw and optimized algorithms agree exactly, that duplicate
 objects conjunct at zero distance, that a small mean-anomaly nudge is a sub-5 km
-near miss, and that band-separated objects never conjunct. Use `--mode validate`
+near miss, that band-separated objects never conjunct, and that the
+relative-speed floor suppresses co-orbital pairs (independently of the window
+start) without dropping genuine crossings. Use `--mode validate`
 to run the same comparison against the live catalog.
