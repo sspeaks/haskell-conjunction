@@ -132,7 +132,7 @@ export const useStore = create<AppState>((set) => ({
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error, loading: false }),
   selectSat: (selectedSat) => set({ selectedSat }),
-  selectConjunction: (selectedConjunction) => set({ selectedConjunction }),
+  selectConjunction: (selectedConjunction) => set({ selectedConjunction, selectedPass: null }),
   toggleRegime: (regime) =>
     set((s) => ({
       visibleRegimes: { ...s.visibleRegimes, [regime]: !s.visibleRegimes[regime] },
@@ -159,6 +159,6 @@ export const useStore = create<AppState>((set) => ({
   setVisibilityResults: (visiblePasses, visibleConjunctions) =>
     set({ visiblePasses, visibleConjunctions, visibilityLoading: false }),
   setVisibilityLoading: (visibilityLoading) => set({ visibilityLoading }),
-  selectPass: (selectedPass) => set({ selectedPass }),
+  selectPass: (selectedPass) => set({ selectedPass, selectedConjunction: null }),
   setPickingObserver: (pickingObserver) => set({ pickingObserver }),
 }));
