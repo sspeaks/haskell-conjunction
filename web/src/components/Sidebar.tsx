@@ -28,6 +28,7 @@ export default function Sidebar() {
   const toggleShell = useStore((s) => s.toggleShell);
   const inertialMode = useStore((s) => s.inertialMode);
   const toggleInertial = useStore((s) => s.toggleInertial);
+  const resetView = useStore((s) => s.resetView);
 
   const counts = useMemo(() => {
     const c: Record<Regime, number> = { LEO: 0, MEO: 0, GEO: 0, HEO: 0 };
@@ -51,6 +52,16 @@ export default function Sidebar() {
   return (
     <div className="sidebar">
       <h1>Conjunction Visualizer</h1>
+
+      <button
+        type="button"
+        className="reset-view"
+        onClick={resetView}
+        title="Reset the camera to the default global view and clear selections"
+        aria-label="Reset view"
+      >
+        ⌂ Reset view
+      </button>
 
       {loading && <p className="muted">Loading catalog…</p>}
       {error && <p className="error">Error: {error}</p>}

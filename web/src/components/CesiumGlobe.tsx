@@ -7,6 +7,7 @@ import {
   ImageryLayer,
   JulianDate,
   Math as CesiumMath,
+  Matrix4,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
   TileMapServiceImageryProvider,
@@ -57,6 +58,7 @@ function SceneContent() {
   const colorMode = useStore((s) => s.colorMode);
   const shellVisibility = useStore((s) => s.shellVisibility);
   const inertialMode = useStore((s) => s.inertialMode);
+  const resetNonce = useStore((s) => s.resetNonce);
   const selectSat = useStore((s) => s.selectSat);
   const setObserverLocation = useStore((s) => s.setObserverLocation);
   const setPickingObserver = useStore((s) => s.setPickingObserver);
@@ -245,6 +247,17 @@ function SceneContent() {
       if (!useStore.getState().selectedPass) theater.resetClock();
     }
   }, [selectedConjunction, satById]);
+
+  // Reset the camera to the default global view. resetView() also clears
+  // selections and the inertial lock in the store; those effects run first in
+  // the same commit, and the defensive identity transform guarantees a clean
+  // reference frame before flyHome regardless of prior inertial state.
+  useEffect(() => {
+    if (!viewer || resetNonce === 0) return;
+    viewer.camera.lookAtTransform(Matrix4.IDENTITY);
+    viewer.camera.flyHome(1.5);
+    theaterRef.current?.resetClock();
+  }, [viewer, resetNonce]);
 
   return null;
 }

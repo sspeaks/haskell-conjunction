@@ -30,6 +30,7 @@ interface AppState {
   colorMode: ColorMode;
   shellVisibility: Record<ShellName, boolean>;
   inertialMode: boolean;
+  resetNonce: number;
 
   // Visibility feature
   observerLocation: ObserverLocation | null;
@@ -57,6 +58,7 @@ interface AppState {
   setVisibilityLoading: (loading: boolean) => void;
   selectPass: (pass: VisiblePass | null) => void;
   setPickingObserver: (picking: boolean) => void;
+  resetView: () => void;
 }
 
 const allRegimesVisible = Object.fromEntries(
@@ -113,6 +115,7 @@ export const useStore = create<AppState>((set) => ({
   colorMode: "regime",
   shellVisibility: { LEO: false, MEO: false, GEO: false },
   inertialMode: false,
+  resetNonce: 0,
 
   // Visibility feature
   observerLocation: loadObserver(),
@@ -173,4 +176,13 @@ export const useStore = create<AppState>((set) => ({
   setVisibilityLoading: (visibilityLoading) => set({ visibilityLoading }),
   selectPass: (selectedPass) => set({ selectedPass, selectedConjunction: null }),
   setPickingObserver: (pickingObserver) => set({ pickingObserver }),
+  resetView: () =>
+    set((s) => ({
+      selectedSat: null,
+      selectedConjunction: null,
+      selectedPass: null,
+      pickingObserver: false,
+      inertialMode: false,
+      resetNonce: s.resetNonce + 1,
+    })),
 }));
