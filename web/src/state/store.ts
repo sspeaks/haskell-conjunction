@@ -10,7 +10,8 @@ import type {
 } from "../api/types";
 import type { Regime } from "../cesium/regime";
 import { REGIMES } from "../cesium/regime";
-import type { ColorMode } from "../cesium/colorModes";
+import type { ColorMode, TypeCategory } from "../cesium/colorModes";
+import { TYPE_CATEGORIES } from "../cesium/colorModes";
 import type { ShellName } from "../cesium/AltitudeShells";
 
 interface AppState {
@@ -24,6 +25,7 @@ interface AppState {
   selectedSat: Satellite | null;
   selectedConjunction: Conjunction | null;
   visibleRegimes: Record<Regime, boolean>;
+  visibleTypes: Record<TypeCategory, boolean>;
   showAnalytics: boolean;
   colorMode: ColorMode;
   shellVisibility: Record<ShellName, boolean>;
@@ -45,6 +47,7 @@ interface AppState {
   selectSat: (sat: Satellite | null) => void;
   selectConjunction: (conj: Conjunction | null) => void;
   toggleRegime: (regime: Regime) => void;
+  toggleType: (type: TypeCategory) => void;
   toggleAnalytics: () => void;
   setColorMode: (mode: ColorMode) => void;
   toggleShell: (shell: ShellName) => void;
@@ -61,6 +64,10 @@ interface AppState {
 const allRegimesVisible = Object.fromEntries(
   REGIMES.map((r) => [r, true]),
 ) as Record<Regime, boolean>;
+
+const allTypesVisible = Object.fromEntries(
+  TYPE_CATEGORIES.map((t) => [t, true]),
+) as Record<TypeCategory, boolean>;
 
 const loadObserver = (): ObserverLocation | null => {
   if (typeof localStorage === "undefined") {
@@ -103,6 +110,7 @@ export const useStore = create<AppState>((set) => ({
   selectedSat: null,
   selectedConjunction: null,
   visibleRegimes: allRegimesVisible,
+  visibleTypes: allTypesVisible,
   showAnalytics: false,
   colorMode: "regime",
   shellVisibility: { LEO: false, MEO: false, GEO: false },
@@ -139,6 +147,10 @@ export const useStore = create<AppState>((set) => ({
   toggleRegime: (regime) =>
     set((s) => ({
       visibleRegimes: { ...s.visibleRegimes, [regime]: !s.visibleRegimes[regime] },
+    })),
+  toggleType: (type) =>
+    set((s) => ({
+      visibleTypes: { ...s.visibleTypes, [type]: !s.visibleTypes[type] },
     })),
   toggleAnalytics: () => set((s) => ({ showAnalytics: !s.showAnalytics })),
   setColorMode: (colorMode) => set({ colorMode }),

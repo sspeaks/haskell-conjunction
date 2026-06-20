@@ -12,13 +12,16 @@ import {
 import type { Satellite } from "../api/types";
 import { parseTle, propagateEcef, type SatRec } from "./propagate";
 import { classifyRegime, type Regime } from "./regime";
-import { colorFor, type ColorMode } from "./colorModes";
+import { colorFor, typeCategory, type ColorMode, type TypeCategory } from "./colorModes";
 
 interface SatEntry {
   sat: Satellite;
   rec: SatRec;
   regime: Regime;
+  type: TypeCategory;
   primitive: PointPrimitive;
+  regimeVisible: boolean;
+  typeVisible: boolean;
   visible: boolean;
 }
 
@@ -74,6 +77,7 @@ export class SatelliteLayer {
       const rec = parseTle(sat.tle1, sat.tle2);
       if (!rec) continue;
       const regime = classifyRegime(sat);
+      const type = typeCategory(sat);
       const pos = propagateEcef(rec, date);
       if (!pos) continue;
       const payload: SatPickPayload = { kind: "satellite", sat };
@@ -83,7 +87,16 @@ export class SatelliteLayer {
         pixelSize: sat.objectType === "DEBRIS" ? 2.5 : 4.5,
         id: payload,
       });
-      this.entries.push({ sat, rec, regime, primitive, visible: true });
+      this.entries.push({
+        sat,
+        rec,
+        regime,
+        type,
+        primitive,
+        regimeVisible: true,
+        typeVisible: true,
+        visible: true,
+      });
     }
     this.startUpdates();
     this.setupPicking();
@@ -103,11 +116,28 @@ export class SatelliteLayer {
   setRegimeVisible(regime: Regime, show: boolean): void {
     for (const e of this.entries) {
       if (e.regime === regime) {
-        e.visible = show;
-        e.primitive.show = show;
+        e.regimeVisible = show;
+        this.applyVisibility(e);
       }
     }
     this.viewer.scene.requestRender();
+  }
+
+  /** Show or hide every satellite in an object-type category. */
+  setTypeVisible(type: TypeCategory, show: boolean): void {
+    for (const e of this.entries) {
+      if (e.type === type) {
+        e.typeVisible = show;
+        this.applyVisibility(e);
+      }
+    }
+    this.viewer.scene.requestRender();
+  }
+
+  /** Derive the combined visibility (regime AND type) and apply it. */
+  private applyVisibility(e: SatEntry): void {
+    e.visible = e.regimeVisible && e.typeVisible;
+    e.primitive.show = e.visible;
   }
 
   /** Highlight a single satellite (enlarge + white outline) or clear (null). */

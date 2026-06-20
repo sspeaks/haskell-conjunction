@@ -23,16 +23,16 @@ export interface LegendItem {
   hex: string;
 }
 
-type TypeCategory = "Payload" | "Rocket body" | "Debris" | "Other";
+export type TypeCategory = "Payload" | "Rocket body" | "Debris" | "Other";
 
-const TYPE_HEX: Record<TypeCategory, string> = {
+export const TYPE_HEX: Record<TypeCategory, string> = {
   Payload: "#22c55e",
   "Rocket body": "#f97316",
   Debris: "#94a3b8",
   Other: "#64748b",
 };
 
-const TYPE_CATEGORIES: TypeCategory[] = [
+export const TYPE_CATEGORIES: TypeCategory[] = [
   "Payload",
   "Rocket body",
   "Debris",
@@ -49,7 +49,7 @@ const ALTITUDE_LEGEND_BANDS: LegendItem[] = [
   { label: ">1500 km", hex: altitudeHex(1600) },
 ];
 
-function typeCategory(sat: Satellite): TypeCategory {
+export function typeCategory(sat: Satellite): TypeCategory {
   const objectType = sat.objectType?.toUpperCase() ?? "";
   if (objectType.includes("PAYLOAD")) return "Payload";
   if (objectType.includes("ROCKET")) return "Rocket body";
