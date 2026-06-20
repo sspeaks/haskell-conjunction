@@ -172,6 +172,10 @@ can call it cross-origin with no extra configuration.
 - **Scene modes**: built-in 3D / 2D / Columbus switcher.
 - **Object inspection**: click any object for NORAD id, type, inclination,
   eccentricity, period, and altitudes.
+- **Filter by type**: per-category checkboxes (Payload / Rocket body / Debris /
+  Other) toggle an object type off, removing it from both the globe point cloud
+  and the conjunction list (a conjunction is hidden when either participant is a
+  hidden type). Composes with the regime filter.
 - **Conjunction list** (closest first). Selecting one opens the **theater**: the
   camera flies to the time of closest approach, both objects get animated orbit
   trails, a live miss-distance line + kilometre readout connects them, and the

@@ -22,6 +22,7 @@ import { AltitudeShells, SHELL_NAMES } from "../cesium/AltitudeShells";
 import { InertialCamera } from "../cesium/InertialCamera";
 import { VisibilityPredictor } from "../cesium/VisibilityPredictor";
 import type { Regime } from "../cesium/regime";
+import type { TypeCategory } from "../cesium/colorModes";
 
 // Token-free providers: flat WGS84 ellipsoid + bundled Natural Earth II imagery
 // (natural-color relief, no city/street/road labels). Hoisted to module scope so
@@ -52,6 +53,7 @@ function SceneContent() {
   const selectedPass = useStore((s) => s.selectedPass);
   const pickingObserver = useStore((s) => s.pickingObserver);
   const visibleRegimes = useStore((s) => s.visibleRegimes);
+  const visibleTypes = useStore((s) => s.visibleTypes);
   const colorMode = useStore((s) => s.colorMode);
   const shellVisibility = useStore((s) => s.shellVisibility);
   const inertialMode = useStore((s) => s.inertialMode);
@@ -82,6 +84,15 @@ function SceneContent() {
     const layer = new SatelliteLayer(viewer as CesiumViewer, selectSat);
     layer.load(list);
     layer.setColorMode(useStore.getState().colorMode);
+    // Reapply active filters so they survive a catalog rebuild (the filter
+    // effects below won't re-run just because the layer was recreated).
+    const state = useStore.getState();
+    (Object.entries(state.visibleTypes) as [TypeCategory, boolean][]).forEach(
+      ([t, show]) => layer.setTypeVisible(t, show),
+    );
+    (Object.entries(state.visibleRegimes) as [Regime, boolean][]).forEach(
+      ([r, show]) => layer.setRegimeVisible(r, show),
+    );
     layerRef.current = layer;
     return () => {
       layer.destroy();
@@ -128,6 +139,15 @@ function SceneContent() {
       layer.setRegimeVisible(r, show),
     );
   }, [visibleRegimes]);
+
+  // Apply object-type visibility toggles.
+  useEffect(() => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    (Object.entries(visibleTypes) as [TypeCategory, boolean][]).forEach(([t, show]) =>
+      layer.setTypeVisible(t, show),
+    );
+  }, [visibleTypes]);
 
   // Apply the active color scheme to the point cloud.
   useEffect(() => {

@@ -1,7 +1,15 @@
 import { useMemo } from "react";
 import { useStore } from "../state/store";
 import { classifyRegime, REGIME_HEX, REGIMES, type Regime } from "../cesium/regime";
-import { COLOR_MODES, COLOR_MODE_LABEL, legendFor } from "../cesium/colorModes";
+import {
+  COLOR_MODES,
+  COLOR_MODE_LABEL,
+  legendFor,
+  typeCategory,
+  TYPE_CATEGORIES,
+  TYPE_HEX,
+  type TypeCategory,
+} from "../cesium/colorModes";
 import { SHELL_HEX, SHELL_NAMES } from "../cesium/AltitudeShells";
 
 export default function Sidebar() {
@@ -12,6 +20,8 @@ export default function Sidebar() {
   const error = useStore((s) => s.error);
   const visibleRegimes = useStore((s) => s.visibleRegimes);
   const toggleRegime = useStore((s) => s.toggleRegime);
+  const visibleTypes = useStore((s) => s.visibleTypes);
+  const toggleType = useStore((s) => s.toggleType);
   const colorMode = useStore((s) => s.colorMode);
   const setColorMode = useStore((s) => s.setColorMode);
   const shellVisibility = useStore((s) => s.shellVisibility);
@@ -22,6 +32,17 @@ export default function Sidebar() {
   const counts = useMemo(() => {
     const c: Record<Regime, number> = { LEO: 0, MEO: 0, GEO: 0, HEO: 0 };
     for (const s of satellites) c[classifyRegime(s)]++;
+    return c;
+  }, [satellites]);
+
+  const typeCounts = useMemo(() => {
+    const c: Record<TypeCategory, number> = {
+      Payload: 0,
+      "Rocket body": 0,
+      Debris: 0,
+      Other: 0,
+    };
+    for (const s of satellites) c[typeCategory(s)]++;
     return c;
   }, [satellites]);
 
@@ -81,6 +102,26 @@ export default function Sidebar() {
                     <span className="swatch" style={{ background: REGIME_HEX[r] }} />
                     <span className="regime-name">{r}</span>
                     <span className="count">{counts[r].toLocaleString()}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section>
+            <h2>Filter types</h2>
+            <ul className="legend">
+              {TYPE_CATEGORIES.map((t) => (
+                <li key={t}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={visibleTypes[t]}
+                      onChange={() => toggleType(t)}
+                    />
+                    <span className="swatch" style={{ background: TYPE_HEX[t] }} />
+                    <span className="regime-name">{t}</span>
+                    <span className="count">{typeCounts[t].toLocaleString()}</span>
                   </label>
                 </li>
               ))}
