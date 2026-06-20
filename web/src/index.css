@@ -518,6 +518,23 @@ body,
   margin-top: 8px;
 }
 
+.reset-view {
+  width: 100%;
+  margin-bottom: 12px;
+  background: none;
+  border: 1px solid var(--panel-border);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.reset-view:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .visibility-actions button {
   flex: 1;
   background: none;
